@@ -82,4 +82,4 @@ EVALUATION:
   save_oracle: False
 
 EXPERIMENT:
-  exp_name: l34_dice_cat
+  exp_name: test

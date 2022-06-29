@@ -100,7 +100,7 @@ class MatchNet(nn.Module):
 
         self.NeighConsensus = NeighConsensus(kernel_sizes=cv_kernels,channels=cv_channels, symmetric_mode=sym_mode, conv=cv_type, in_channel=in_channel)
 
-    def forward(self, fq_fea, fs_fea, v, s_mask=None, ig_mask=None, ret_corr=False, use_cyc=False, ret_cyc=False):  # ig_mask [1, 3600]
+    def forward(self, fq_fea, fs_fea, v, s_mask=None, ig_mask=None, ret_corr=False, use_cyc=False, ret_cyc=False, ret_2dcorr=False):  # ig_mask [1, 3600]
         B, ch, h, w = fq_fea.shape
         if v.dim() == 4:
             v = v.flatten(2)
@@ -136,6 +136,8 @@ class MatchNet(nn.Module):
             return weighted_v, inconsistent_mask,
         elif ret_corr:
             return weighted_v, corr2d.reshape(B, h, w, h, w)
+        elif ret_2dcorr:
+            return weighted_v, corr4d
         else:
             return weighted_v
 
