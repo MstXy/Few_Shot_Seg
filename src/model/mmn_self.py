@@ -29,7 +29,8 @@ class MMN(nn.Module):
 
         self.corr_net = MatchNet(temp=args.temp, cv_type='red', sce=False, cyc=False, sym_mode=True)
 
-        self.conv3_scale = nn.Conv2d(2 * inner_channel, inner_channel, (3, 3), stride=1, padding=1)
+        # self.conv3_scale = nn.Conv2d(2 * inner_channel, inner_channel, (3, 3), stride=1, padding=1)
+        self.conv3_scale = nn.Conv2d(2048+1024, 1024, (3, 3), stride=1, padding=1)
 
     def forward(self, fq_lst, fs_lst, f_q, f_s, padding_mask=None, s_padding_mask=None):
 
@@ -50,7 +51,7 @@ class MMN(nn.Module):
             fs4 = self.wa_4(fs4)
 
         att_fq4, corr4 = self.corr_net(fq4, fs4, f_s, s_mask=None, ig_mask=None, ret_corr=False, use_cyc=False, ret_cyc=False, ret_2dcorr=True)
-
+        print(corr4.shape)
         fq3 = torch.cat((fq3, fq4), 1)
         fs3 = torch.cat((fs3, fs4), 1)
 
@@ -58,7 +59,7 @@ class MMN(nn.Module):
         fs3 = self.conv3_scale(fs3)
 
         att_fq34, corr34 = self.corr_net(fq3, fs3, f_s, s_mask=None, ig_mask=None, ret_corr=False, use_cyc=False, ret_cyc=False, ret_2dcorr=True)
-
+        print(corr34.shape)
         refined_corr = corr4 + corr34
 
         attn = F.softmax( refined_corr*self.temp, dim=-1 )

@@ -137,7 +137,7 @@ class MatchNet(nn.Module):
         elif ret_corr:
             return weighted_v, corr2d.reshape(B, h, w, h, w)
         elif ret_2dcorr:
-            return weighted_v, corr4d
+            return weighted_v, corr2d
         else:
             return weighted_v
 
