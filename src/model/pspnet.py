@@ -9,6 +9,8 @@ from .vgg import vgg16_bn
 from .model_util import get_corr, get_ig_mask
 from torch.nn.utils.weight_norm import WeightNorm
 
+from operator import add
+from functools import reduce, partial
 
 def get_model(args) -> nn.Module:
     return PSPNet(args, zoom_factor=8, use_ppm=True)
@@ -79,14 +81,29 @@ class PSPNet(nn.Module):
         self.rmid = args.get('rmid', None)     # 是否返回中间层
         self.args = args
 
+        # 是否hyperpixel，即是否返回resnet每一层conv的结果。
+        try:
+            self.hyperpixel = args.hyperpixel
+        except AttributeError:
+            self.hyperpixel = None
+        ##!! pending for implementation
+        if self.hyperpixel:
+            self.feature_size = args.cats_feature_size
+            nbottlenecks = [3, 4, 6, 3]
+            self.bottleneck_ids = reduce(add, list(map(lambda x: list(range(x)), nbottlenecks)))
+            self.layer_ids = reduce(add, [[i + 1] * x for i, x in enumerate(nbottlenecks)])
+            self.hyperpixel_ids = args.hyperpixel_ids
+
         resnet_kwargs = {}
         if self.rmid == 'nr':
             resnet_kwargs['no_relu'] = True
         if args.arch == 'resnet':
             if args.layers == 50:
                 resnet = resnet50(pretrained=args.pretrained, **resnet_kwargs)
+                self.backbone = resnet
             else:
                 resnet = resnet101(pretrained=args.pretrained, **resnet_kwargs)
+                self.backbone = resnet
             self.layer0 = nn.Sequential(
                 resnet.conv1, resnet.bn1, resnet.relu,
                 resnet.conv2, resnet.bn2, resnet.relu,
@@ -177,6 +194,54 @@ class PSPNet(nn.Module):
             return x, [x4_nr]
         else:
             return x, []
+    
+    def extract_hyper_features(self, img):
+        r"""Extract desired a list of intermediate features"""
+
+        feats = []
+
+        # Layer 0
+        feat = self.backbone.conv1.forward(img)
+        feat = self.backbone.bn1.forward(feat)
+        feat = self.backbone.relu.forward(feat)
+        feat = self.backbone.conv2.forward(feat) # change according to original model
+        feat = self.backbone.bn2.forward(feat)
+        feat = self.backbone.relu.forward(feat)
+        feat = self.backbone.conv3.forward(feat)
+        feat = self.backbone.bn3.forward(feat)
+        feat = self.backbone.relu.forward(feat)
+        feat = self.backbone.maxpool.forward(feat)
+        if 0 in self.hyperpixel_ids:
+            feats.append(feat.clone())
+
+        # Layer 1-4
+        for hid, (bid, lid) in enumerate(zip(self.bottleneck_ids, self.layer_ids)):
+            res = feat
+            feat = self.backbone.__getattr__('layer%d' % lid)[bid].conv1.forward(feat)
+            feat = self.backbone.__getattr__('layer%d' % lid)[bid].bn1.forward(feat)
+            # feat = self.backbone.__getattr__('layer%d' % lid)[bid].relu.forward(feat)
+            feat = self.backbone.__getattr__('layer%d' % lid)[bid].conv2.forward(feat)
+            feat = self.backbone.__getattr__('layer%d' % lid)[bid].bn2.forward(feat)
+            # feat = self.backbone.__getattr__('layer%d' % lid)[bid].relu.forward(feat)
+            feat = self.backbone.__getattr__('layer%d' % lid)[bid].conv3.forward(feat)
+            feat = self.backbone.__getattr__('layer%d' % lid)[bid].bn3.forward(feat)
+
+            if bid == 0:
+                res = self.backbone.__getattr__('layer%d' % lid)[bid].downsample.forward(res)
+
+            feat += res
+
+            if hid + 1 in self.hyperpixel_ids:
+                feats.append(feat.clone())
+                #if hid + 1 == max(self.hyperpixel_ids):
+                #    break
+            feat = self.backbone.__getattr__('layer%d' % lid)[bid].relu.forward(feat)
+
+        # # Up-sample & concatenate features to construct a hyperimage
+        # for idx, feat in enumerate(feats):
+        #     feats[idx] = F.interpolate(feat, self.feature_size, None, 'bilinear', True)
+
+        return feats
 
     def extract_features_backbone(self, x):
         x = self.layer0(x)
