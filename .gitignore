@@ -12,3 +12,5 @@ pic/
 models/__pychache__/
 .idea/**
 src/__pychache__/
+self_check.py
+vis_result
