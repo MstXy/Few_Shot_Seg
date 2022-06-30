@@ -54,14 +54,15 @@ with torch.no_grad():
 model.eval()
 with torch.no_grad():
     f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
-    pd_q0 = model.classifier(f_q)
-    pd_s  = model.classifier(f_s)
-    pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
+    # pd_q0 = model.classifier(f_q)
+    # pd_s  = model.classifier(f_s)
+    # pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
-Trans.train()
-fq, att_fq = Trans(fq_lst, fs_lst, f_q, f_s, padding_mask=None, s_padding_mask=None)
-pd_q1 = model.classifier(att_fq)
-pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+print(f_s.shape)
+# Trans.train()
+# fq, att_fq = Trans(fq_lst, fs_lst, f_q, f_s, padding_mask=None, s_padding_mask=None)
+# pd_q1 = model.classifier(att_fq)
+# pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
-pd_q = model.classifier(fq)
-pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+# pd_q = model.classifier(fq)
+# pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
