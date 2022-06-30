@@ -219,10 +219,10 @@ class PSPNet(nn.Module):
             res = feat
             feat = self.backbone.__getattr__('layer%d' % lid)[bid].conv1.forward(feat)
             feat = self.backbone.__getattr__('layer%d' % lid)[bid].bn1.forward(feat)
-            # feat = self.backbone.__getattr__('layer%d' % lid)[bid].relu.forward(feat)
+            feat = self.backbone.__getattr__('layer%d' % lid)[bid].relu.forward(feat)
             feat = self.backbone.__getattr__('layer%d' % lid)[bid].conv2.forward(feat)
             feat = self.backbone.__getattr__('layer%d' % lid)[bid].bn2.forward(feat)
-            # feat = self.backbone.__getattr__('layer%d' % lid)[bid].relu.forward(feat)
+            feat = self.backbone.__getattr__('layer%d' % lid)[bid].relu.forward(feat)
             feat = self.backbone.__getattr__('layer%d' % lid)[bid].conv3.forward(feat)
             feat = self.backbone.__getattr__('layer%d' % lid)[bid].bn3.forward(feat)
 
