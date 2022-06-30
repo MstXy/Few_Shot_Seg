@@ -1,5 +1,5 @@
 from src.model.pspnet import *
-from src.model.mmn_self import *
+from src.model import TransforMatcher
 import torch
 import numpy as np
 from torch import nn
@@ -23,20 +23,20 @@ def parse_args() -> argparse.Namespace:
 
 args = parse_args()
 
-# model = get_model(args).cuda()
-model = get_model(args)
+model = get_model(args).cuda()
+# model = get_model(args)
 
 # Trans = MMN(args, inner_channel=32, sem=args.sem, wa=args.wa).cuda()
-Trans = MMN(args, inner_channel=32, sem=args.sem, wa=args.wa)
+Trans = TransforMatcher(args).cuda()
 
-# spt_imgs = torch.randn(1, 1, 3, 473, 473).cuda()  # [1, n_shot, 3, h, w] 473, 473
-# s_label = torch.randn(1, 1, 473, 473).cuda()  # [1, n_shot, h, w]
-# q_label = torch.randn(1, 473, 473).cuda()  # [1, h, w]
-# qry_img = torch.randn(1, 3, 473, 473).cuda()  # [1, 3, h, w]
-spt_imgs = torch.randn(1, 1, 3, 473, 473)  # [1, n_shot, 3, h, w] 473, 473
-s_label = torch.randn(1, 1, 473, 473)  # [1, n_shot, h, w]
-q_label = torch.randn(1, 473, 473)  # [1, h, w]
-qry_img = torch.randn(1, 3, 473, 473)  # [1, 3, h, w]
+spt_imgs = torch.randn(1, 1, 3, 473, 473).cuda()  # [1, n_shot, 3, h, w] 473, 473
+s_label = torch.randn(1, 1, 473, 473).cuda()  # [1, n_shot, h, w]
+q_label = torch.randn(1, 473, 473).cuda()  # [1, h, w]
+qry_img = torch.randn(1, 3, 473, 473).cuda()  # [1, 3, h, w]
+# spt_imgs = torch.randn(1, 1, 3, 473, 473)  # [1, n_shot, 3, h, w] 473, 473
+# s_label = torch.randn(1, 1, 473, 473)  # [1, n_shot, h, w]
+# q_label = torch.randn(1, 473, 473)  # [1, h, w]
+# qry_img = torch.randn(1, 3, 473, 473)  # [1, 3, h, w]
 
 # ====== Phase 1: Train the binary classifier on support samples ======
 
@@ -58,9 +58,15 @@ with torch.no_grad():
     # pd_s  = model.classifier(f_s)
     # pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
-print(f_s.shape)
+if args.hyperpixel:
+    model.eval()
+    with torch.no_grad():
+        fs_lst = model.extract_hyper_features(spt_imgs.squeeze(1)) ##!! only suits for 1 shot only currently
+        fq_lst = model.extract_hyper_features(qry_img)
+
 # Trans.train()
-# fq, att_fq = Trans(fq_lst, fs_lst, f_q, f_s, padding_mask=None, s_padding_mask=None)
+corr = Trans(fq_lst, fs_lst, f_q, f_s)
+print(corr.shape)
 # pd_q1 = model.classifier(att_fq)
 # pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 

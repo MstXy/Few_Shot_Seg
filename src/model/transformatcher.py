@@ -43,6 +43,21 @@ def FeedForward(dim, mult = 4):
         nn.Linear(int(dim * mult), dim)
     )
 
+class FeatureL2Norm(nn.Module):
+    """
+    Implementation by Ignacio Rocco
+    paper: https://arxiv.org/abs/1703.05593
+    project: https://github.com/ignacio-rocco/cnngeometric_pytorch
+    """
+    def __init__(self):
+        super(FeatureL2Norm, self).__init__()
+
+    def forward(self, feature, dim=1):
+        epsilon = 1e-6
+        norm = torch.pow(torch.sum(torch.pow(feature, 2), dim) + epsilon, 0.5).unsqueeze(dim).expand_as(feature)
+        return torch.div(feature, norm)
+
+
 
 class Match2MatchAttention(nn.Module):
     def __init__(
@@ -51,8 +66,8 @@ class Match2MatchAttention(nn.Module):
         *,
         heads = 8,
         dim_head = 64,
-        max_seq_len = 15**4,
-        pos_emb = None
+        max_seq_len = 30**4,
+        pos_emb = None,
     ):
         super().__init__()
         inner_dim = heads * dim_head
@@ -129,13 +144,16 @@ class Match2MatchAttention(nn.Module):
 
 class TransforMatcher(nn.Module):
 
-    def __init__(self, feat_dims,luse):
+    # def __init__(self, feat_dims,luse):
+    def __init__(self, args):
         super(TransforMatcher, self).__init__()
 
-        input_dim = 16
+        # input_dim = 16
+        input_dim = 6
         layer_num = 6 
         expand_ratio = 4
-        bottlen = 26 # 23 + 3 bottleneck layers
+        # bottlen = 26 # 23 + 3 bottleneck layers
+        bottlen = 6 + 3
 
         self.flatten_and_project_matches = nn.Sequential(
             Rearrange('b c h1 w1 h2 w2 -> b (h1 w1 h2 w2) c'),
@@ -146,7 +164,7 @@ class TransforMatcher(nn.Module):
 
         self.to_correlation = nn.Sequential(
             nn.Linear(input_dim, 1),
-            Rearrange('b (h1 w1 h2 w2) c -> b c h1 w1 h2 w2', h1=15, w1=15, h2=15, w2=15),
+            Rearrange('b (h1 w1 h2 w2) c -> b c h1 w1 h2 w2', h1=30, w1=30, h2=30, w2=30),
         )
         
         self.trans_nc = nn.ModuleList([])
@@ -158,15 +176,36 @@ class TransforMatcher(nn.Module):
         
         self.relu = nn.ReLU(inplace=True)
 
-    def forward(self, src_feats, trg_feats):
+        self.args = args
+        self.temp = args.temp
+        self.target_size = 60
+        self.l2norm = FeatureL2Norm()
+        self.downsample = nn.MaxPool2d(2) # downsample by factor of 2
+
+
+    def cosine_similarity(self, src_feats, trg_feats):
+        correlations = []
+        for i, (src, trg) in enumerate(zip(src_feats, trg_feats)): 
+            src = self.downsample(src)
+            trg = self.downsample(trg)
+            src = self.l2norm(src)
+            trg = self.l2norm(trg)
+            corr = src.flatten(2).transpose(-1, -2) @ trg.flatten(2)
+
+            B, ch, h, w = src.size()
+            corr = corr.view(B, -1, h, w, h, w)
+            correlations.append(corr)
+        return correlations
+
+    def forward(self, src_feats, trg_feats, f_q, v):
         
-        correlations = Correlation.cosine_similarity(src_feats, trg_feats)
-        correlations = torch.stack(correlations, dim=1) # b, 26, 15, 15, 15, 15
+        correlations = self.cosine_similarity(src_feats, trg_feats)
+        correlations = torch.stack(correlations, dim=1) # b, 26, 15, 15, 15, 15 -> b, 9, 30, 30, 30, 30
         correlations = correlations.squeeze(2)
 
         correlations = self.relu(correlations)
 
-        bsz, ch, side, _, _, _ = correlations.size()
+        B, ch, side, _, _, _ = correlations.size()
         
         flattened_matches = self.flatten_and_project_matches(correlations)
 
@@ -176,9 +215,17 @@ class TransforMatcher(nn.Module):
         
         refined_corr = self.to_correlation(flattened_matches)
 
-        correlations = Geometry.interpolate4d(refined_corr.squeeze(1), Geometry.upsample_size).unsqueeze(1)
- 
-        side = correlations.size(-1) ** 2
-        correlations = correlations.view(bsz, side, side).contiguous()
+        # correlations = Geometry.interpolate4d(refined_corr.squeeze(1), Geometry.upsample_size).unsqueeze(1)
+        correlations = Geometry.interpolate4d(refined_corr.squeeze(1), self.target_size).unsqueeze(1)
 
-        return correlations
+        side = correlations.size(-1) ** 2
+        corr2d = correlations.view(B, side, side).contiguous()
+
+        if v.dim() == 4:
+            v = v.flatten(2)
+        attn = F.softmax( corr2d*self.temp, dim=-1 )
+        weighted_v = torch.bmm(v, attn.permute(0, 2, 1))  # [B, 512, N_s] * [B, N_s, N_q] -> [1, 512, N_q]
+        weighted_v = weighted_v.view(B, -1, self.target_size, self.target_size)
+        fq = F.normalize(f_q, p=2, dim=1) + F.normalize(weighted_v, p=2, dim=1) * self.args.att_wt
+
+        return fq, weighted_v

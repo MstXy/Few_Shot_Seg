@@ -59,14 +59,14 @@ def main(args: argparse.Namespace) -> None:
 
     if args.resume_weights:
         fname = args.resume_weights + args.train_name + '/' + \
-                'split={}/pspnet_{}{}/best.pth'.format(args.train_split, args.arch, args.layers)
+                'split={}/model/pspnet_{}{}/best.pth'.format(args.train_split, args.arch, args.layers)
         if os.path.isfile(fname):
             log("=> loading weight '{}'".format(fname))
             pre_weight = torch.load(fname)['state_dict']
             pre_dict = model.state_dict()
 
             for index, key in enumerate(pre_dict.keys()):
-                if 'classifier' not in key and 'gamma' not in key:
+                if 'classifier' not in key and 'gamma' not in key and 'backbone' not in key:
                     if pre_dict[key].shape == pre_weight['module.' + key].shape:
                         pre_dict[key] = pre_weight['module.' + key]
                     else:
@@ -100,7 +100,7 @@ def main(args: argparse.Namespace) -> None:
     episodic_val_loader, _ = get_val_loader(args)
 
     # ======= Transformer ======= args, inner_channel=32, sem=True, wa=False
-    Trans = MMN(args, agg=args.agg, inner_channel=32, sem=args.sem, wa=args.wa).cuda()
+    Trans = TransforMatcher(args).cuda()
     optimizer_meta = get_optimizer(args, [dict(params=Trans.parameters(), lr=args.trans_lr * args.scale_lr)])
     scheduler = get_scheduler(args, optimizer_meta, len(train_loader))
 
@@ -144,6 +144,12 @@ def main(args: argparse.Namespace) -> None:
                 f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
                 pd_q0 = model.classifier(f_q)
                 pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
+
+            if args.hyperpixel:
+                model.eval()
+                with torch.no_grad():
+                    fs_lst = model.extract_hyper_features(spt_imgs.squeeze(1)) ##!! only suits for 1 shot only currently
+                    fq_lst = model.extract_hyper_features(qry_img)
 
             Trans.train()
             fq, att_fq = Trans(fq_lst, fs_lst, f_q, f_s,)
@@ -273,6 +279,11 @@ def validate_epoch(args, val_loader, model, Net):
             pd_q0 = model.classifier(f_q)
             pd_s  = model.classifier(f_s)
             pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
+
+        if args.hyperpixel:
+            with torch.no_grad():
+                fs_lst = model.extract_hyper_features(spt_imgs.squeeze(1)) ##!! only suits for 1 shot only currently
+                fq_lst = model.extract_hyper_features(qry_img)
 
         Net.eval()
         fq, att_fq = Net(fq_lst, fs_lst, f_q, f_s)
