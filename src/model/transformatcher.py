@@ -18,7 +18,7 @@ import torch.nn.init as init
 
 from einops.layers.torch import Rearrange
 from einops import rearrange, repeat, reduce
-import opt_einsum as oe
+# import opt_einsum as oe
 
 from rotary_embedding_torch import apply_rotary_emb, RotaryEmbedding
 
@@ -178,7 +178,7 @@ class TransforMatcher(nn.Module):
 
         self.args = args
         self.temp = args.temp
-        self.target_size = 60
+        self.target_size = [60, 60]
         self.l2norm = FeatureL2Norm()
         self.downsample = nn.MaxPool2d(2) # downsample by factor of 2
 
@@ -225,7 +225,7 @@ class TransforMatcher(nn.Module):
             v = v.flatten(2)
         attn = F.softmax( corr2d*self.temp, dim=-1 )
         weighted_v = torch.bmm(v, attn.permute(0, 2, 1))  # [B, 512, N_s] * [B, N_s, N_q] -> [1, 512, N_q]
-        weighted_v = weighted_v.view(B, -1, self.target_size, self.target_size)
+        weighted_v = weighted_v.view(B, -1, self.target_size[0], self.target_size[1])
         fq = F.normalize(f_q, p=2, dim=1) + F.normalize(weighted_v, p=2, dim=1) * self.args.att_wt
 
         return fq, weighted_v
