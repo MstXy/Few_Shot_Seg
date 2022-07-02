@@ -64,9 +64,10 @@ if args.hyperpixel:
         fs_lst = model.extract_hyper_features(spt_imgs.squeeze(1)) ##!! only suits for 1 shot only currently
         fq_lst = model.extract_hyper_features(qry_img)
 
+print([f.shape for f in fq_lst])
 # Trans.train()
-corr = Trans(fq_lst, fs_lst, f_q, f_s)
-print(corr.shape)
+# corr = Trans(fq_lst, fs_lst, f_q, f_s)
+# print(corr.shape)
 # pd_q1 = model.classifier(att_fq)
 # pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 

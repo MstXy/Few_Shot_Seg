@@ -180,14 +180,22 @@ class TransforMatcher(nn.Module):
         self.temp = args.temp
         self.target_size = [60, 60]
         self.l2norm = FeatureL2Norm()
-        self.downsample = nn.MaxPool2d(2) # downsample by factor of 2
+        # self.downsample = nn.MaxPool2d(2) # downsample by factor of 2
+        self.downsample_1024 = nn.Conv2d(1024, 1024, (1,1), 2)
+        self.downsample_2048 = nn.Conv2d(2048, 2048, (1,1), 2)
 
 
     def cosine_similarity(self, src_feats, trg_feats):
         correlations = []
         for i, (src, trg) in enumerate(zip(src_feats, trg_feats)): 
-            src = self.downsample(src)
-            trg = self.downsample(trg)
+            if src.size(dim=1) == 1024:
+                src = self.downsample_1024(src)
+                trg = self.downsample_1024(trg)
+            elif src.size(dim=1) == 2048:
+                src = self.downsample_2048(src)
+                trg = self.downsample_2048(trg)
+            # src = self.downsample(src)
+            # trg = self.downsample(trg)
             src = self.l2norm(src)
             trg = self.l2norm(trg)
             corr = src.flatten(2).transpose(-1, -2) @ trg.flatten(2)
@@ -200,7 +208,7 @@ class TransforMatcher(nn.Module):
     def forward(self, src_feats, trg_feats, f_q, v):
         
         correlations = self.cosine_similarity(src_feats, trg_feats)
-        correlations = torch.stack(correlations, dim=1) # b, 26, 15, 15, 15, 15 -> b, 9, 30, 30, 30, 30
+        correlations = torch.stack(correlations, dim=1) # b, 9, 30, 30, 30, 30
         correlations = correlations.squeeze(2)
 
         correlations = self.relu(correlations)

@@ -9,8 +9,7 @@
 #SBATCH --mail-type=END
 #SBATCH --mail-user=cz1627@nyu.edu
 #SBATCH --output=seg.out
-#SBATCH --gres=gpu # How much gpu need, n is the number
-#SBATCH --partition=v100,a100
+#SBATCH --gres=gpu
 
 module purge
 
