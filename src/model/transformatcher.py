@@ -148,8 +148,8 @@ class TransforMatcher(nn.Module):
     def __init__(self, args):
         super(TransforMatcher, self).__init__()
 
-        # input_dim = 16
-        input_dim = 6
+        input_dim = 16
+        # input_dim = 6
         layer_num = 6 
         expand_ratio = 4
         # bottlen = 26 # 23 + 3 bottleneck layers

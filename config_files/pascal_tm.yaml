@@ -83,4 +83,4 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: l34_tm_convDS
+  exp_name: l34_tm_16dim
