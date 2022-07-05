@@ -148,8 +148,8 @@ class TransforMatcher(nn.Module):
     def __init__(self, args):
         super(TransforMatcher, self).__init__()
 
-        input_dim = 16
-        # input_dim = 6
+        # input_dim = 16
+        input_dim = 6
         layer_num = 6 
         expand_ratio = 4
         # bottlen = 26 # 23 + 3 bottleneck layers
@@ -170,7 +170,7 @@ class TransforMatcher(nn.Module):
         self.trans_nc = nn.ModuleList([])
         for _ in range(layer_num):
             self.trans_nc.append(nn.ModuleList([
-                PreNorm(input_dim, Match2MatchAttention(input_dim, heads = 8, dim_head = 4, pos_emb=layer_pos_emb)),
+                PreNorm(input_dim, Match2MatchAttention(input_dim, heads = 8, dim_head = 16, pos_emb=layer_pos_emb)),
                 PreNorm(input_dim, FeedForward(input_dim)),
             ]))
         

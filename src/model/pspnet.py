@@ -93,7 +93,7 @@ class PSPNet(nn.Module):
             nbottlenecks = [3, 4, 6, 3]
             self.bottleneck_ids = reduce(add, list(map(lambda x: list(range(x)), nbottlenecks)))
             self.layer_ids = reduce(add, [[i + 1] * x for i, x in enumerate(nbottlenecks)])
-            self.hyperpixel_ids = list(range(8,17)) # the last two layers, layer 3 and 4
+            self.hyperpixel_ids = args.hyperpixel_ids
 
         resnet_kwargs = {}
         if self.rmid == 'nr':

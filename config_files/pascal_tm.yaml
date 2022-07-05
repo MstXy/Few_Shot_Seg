@@ -57,7 +57,7 @@ MODEL:
   att_wt: 0.2
   rmid: l34      # nr, l2, l4
 
-  red_dim: 512
+  red_dim: False
   wa: False
 
   inner_loss_type: wt_ce
@@ -65,6 +65,7 @@ MODEL:
   agg: cat
 
   hyperpixel: True
+  hyperpixel_ids: [8,9,10,11,12,13,14,15,16]
 
 Classifier:
   dist: cosN
@@ -84,4 +85,4 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: l34_tm_16dim_ncds
+  exp_name: l34_tm_dh16

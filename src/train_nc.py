@@ -101,7 +101,7 @@ def main(args: argparse.Namespace) -> None:
     episodic_val_loader, _ = get_val_loader(args)
 
     # ======= Transformer ======= args, inner_channel=32, sem=True, wa=False
-    Trans = NC(args, hyperpixel_ids = model.hyperpixel_ids).cuda()
+    Trans = NC(args, hyperpixel_ids = args.hyperpixel_ids).cuda()
     optimizer_meta = get_optimizer(args, [dict(params=Trans.parameters(), lr=args.trans_lr * args.scale_lr)])
     scheduler = get_scheduler(args, optimizer_meta, len(train_loader))
 

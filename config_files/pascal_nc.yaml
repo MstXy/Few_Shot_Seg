@@ -65,6 +65,7 @@ MODEL:
   agg: cat
 
   hyperpixel: True
+  hyperpixel_ids: [8, 16]
 
 Classifier:
   dist: cosN
@@ -84,4 +85,4 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: l34_nc_hyper
+  exp_name: l34_nc

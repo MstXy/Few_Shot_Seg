@@ -25,7 +25,7 @@ singularity exec --nv \
 			--overlay /scratch/cz1627/overlay-25GB-500K.ext3:ro \
 			/scratch/cz1627/cuda11.4.2-cudnn8.2.4-devel-ubuntu20.04.3.sif \
             /bin/bash -c " source /ext3/env.sh;
-            python -m src.train_nc --config config_files/${DATA}_tm.yaml \
+            python -m src.train_nc --config config_files/${DATA}_nc.yaml \
 					 --opts train_split ${SPLIT} \
 						    layers ${LAYERS} \
 						    shot ${SHOT} \
@@ -33,7 +33,7 @@ singularity exec --nv \
 						    batch_size 1 \
 						    batch_size_val 1 \
 						    epochs 12 \
-					 > log_nc.txt 2>&1"
+					 > log.txt 2>&1"
 
 echo "finish"
 
