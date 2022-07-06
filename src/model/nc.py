@@ -12,6 +12,17 @@ class NC(nn.Module):
     def __init__(self, args, hyperpixel_ids=list(range(8,17))):
         super().__init__()
         self.args = args     # rmid
+        self.red_dim = args.red_dim
+        self.bid_lst = [int(num) for num in list(args.rmid[1:])]  # [1, 2, 3, 4]
+
+        if self.red_dim != False:
+            for bid in self.bid_lst:
+                c_in = self.feature_channels[bid-1]
+                if isinstance(self.red_dim, int):
+                    setattr(self, "rd_" + str(bid), nn.Sequential(nn.Conv2d(c_in, self.red_dim, kernel_size=1, stride=1, padding=0, bias=False),
+                                                                  nn.ReLU(inplace=True)))
+                    c_in = self.red_dim
+
         match_ch = len(hyperpixel_ids)
         self.corr_net = MatchNet(temp=args.temp, cv_type='red', sce=False, cyc=False, sym_mode=True, in_channel=match_ch)
 
@@ -19,7 +30,10 @@ class NC(nn.Module):
         B, ch, h, w = f_q.shape
 
         corr_lst = []
-        for i, (fq_fea, fs_fea) in enumerate(zip(fq_lst, fs_lst)): 
+        for i, (fq_fea, fs_fea) in enumerate(zip(fq_lst, fs_lst)):
+            if self.red_dim: # this is for the no hyperpixel case
+                    fq_fea = getattr(self, 'rd_'+str(i+3))(fq_fea)
+                    fs_fea = getattr(self, 'rd_'+str(i+3))(fs_fea)
             fq_fea = F.normalize(fq_fea, dim=1)
             fs_fea = F.normalize(fs_fea, dim=1)
             corr = get_corr(fq_fea, fs_fea)

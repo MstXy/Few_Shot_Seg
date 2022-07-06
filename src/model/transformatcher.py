@@ -185,6 +185,18 @@ class TransforMatcher(nn.Module):
         # self.downsample_1024 = nn.Conv2d(1024, 1024, (1,1), 2)
         # self.downsample_2048 = nn.Conv2d(2048, 2048, (1,1), 2)
 
+        self.red_dim = args.red_dim
+        self.bid_lst = [int(num) for num in list(args.rmid[1:])]  # [1, 2, 3, 4]
+
+        if self.red_dim != False:
+            for bid in self.bid_lst:
+                c_in = self.feature_channels[bid-1]
+                if isinstance(self.red_dim, int):
+                    setattr(self, "rd_" + str(bid), nn.Sequential(nn.Conv2d(c_in, self.red_dim, kernel_size=1, stride=1, padding=0, bias=False),
+                                                                  nn.ReLU(inplace=True)))
+                    c_in = self.red_dim
+
+
 
     def cosine_similarity(self, src_feats, trg_feats):
         correlations = []
@@ -195,6 +207,9 @@ class TransforMatcher(nn.Module):
             # elif src.size(dim=1) == 2048:
             #     src = self.downsample_2048(src)
             #     trg = self.downsample_2048(trg)
+            if self.red_dim: # this is for the no hyperpixel case
+                    src = getattr(self, 'rd_'+str(i+3))(src)
+                    trg = getattr(self, 'rd_'+str(i+3))(trg)
             src = self.downsample(src)
             trg = self.downsample(trg)
             src = self.l2norm(src)
