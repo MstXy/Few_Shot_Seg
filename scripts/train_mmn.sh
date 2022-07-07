@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=co
+#SBATCH --job-name=p
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
@@ -26,12 +26,10 @@ singularity exec --nv \
             --overlay /scratch/lg154/sseg/dataset/coco2014.sqf:ro \
             /scratch/work/public/singularity/cuda11.2.2-cudnn8-devel-ubuntu20.04.sif \
             /bin/bash -c " source /ext3/env.sh;
-            python -m src.train_mmn --config config_files/${DATA}_mmn.yaml \
+            python -m src.train_kshot --config config_files/${DATA}_mmn.yaml \
 					 --opts train_split ${SPLIT} \
 						    layers ${LAYERS} \
 						    shot ${SHOT} \
-						    batch_size 1 \
-						    batch_size_val 1 \
 					 > log.txt 2>&1"
 
 echo "finish"

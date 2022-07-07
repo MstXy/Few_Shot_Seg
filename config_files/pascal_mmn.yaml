@@ -27,7 +27,7 @@ TRAIN:
   log_freq : 50
   save_models: False
   cls_lr: 0.1
-  trans_lr: 0.001
+  trans_lr: 0.0015
   scale_lr: 1.0
   mixup: False
   lr_stepsize: 30
@@ -53,6 +53,8 @@ MODEL:
   resume_weights: ./pretrained_models/
   model_dir: model_ckpt
 
+  conv4d: red  # red, cv4
+
   temp: 20.0
   att_wt: 0.2
   aux: False     #  False or input weight of aux loss
@@ -63,18 +65,20 @@ MODEL:
   all_lr: l
 
   red_dim: False  # False or 512
-  wa: False       # True or False
+  wa: False        # True or False
+  proj_drop: 0.5
+  att_drop: 0.5
 
 Classifier:
-  dist: cosN
-  cls_type: ooo
+  dist: dot
+  cls_type: rooo
 
 EVALUATION:
   shot: 1
   random_shot: False
   episodic: True
   norm_feat: True
-  batch_size_val: 100
+  batch_size_val: 1
   manual_seed: 2021
   ckpt_used: best
   test_num: 1000
@@ -83,4 +87,4 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: l34_dice_cat_r1
+  exp_name: dotr_l34_loss
