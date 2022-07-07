@@ -148,20 +148,34 @@ def main(args: argparse.Namespace) -> None:
             if args.hyperpixel:
                 model.eval()
                 with torch.no_grad():
-                    fs_lst = model.extract_hyper_features(spt_imgs.squeeze(1)) ##!! only suits for 1 shot only currently
+                    fs_lst = model.extract_hyper_features(spt_imgs)
                     fq_lst = model.extract_hyper_features(qry_img)
 
             Trans.train()
-            fq, att_fq = Trans(fq_lst, fs_lst, f_q, f_s,)
+            criterion = SegLoss(loss_type=args.loss_type)
+            q_loss1 = 0
+            att_fq = []
+            for k in range(args.shot):
+                single_fs_lst = [fs[k] for fs in fs_lst]
+                single_f_s = f_s[k]
+                fq, att_out = Trans(fq_lst, single_fs_lst, f_q, single_f_s,)
+                att_fq.append(att_out)
+                pred_att = model.classifier(att_out)
+                pred_att = F.interpolate(pred_att, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+                q_loss1 = q_loss1 + criterion(pred_att, q_label.long())
+
+            att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
+            att_fq = att_fq.mean(dim=0, keepdim=True)
+            fq = f_q * (1-args.att_wt) + att_fq * args.att_wt
+
             pd_q1 = model.classifier(att_fq)
             pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
-
             pd_q = model.classifier(fq)
             pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
             # Loss function: Dynamic class weights used for query image only during training
-            criterion = SegLoss(loss_type=args.loss_type)
-            q_loss1 = criterion(pred_q1, q_label.long())
+            # criterion = SegLoss(loss_type=args.loss_type)
+            # q_loss1 = criterion(pred_q1, q_label.long())
             q_loss0 = criterion(pred_q0, q_label.long())
             q_loss  = criterion(pred_q, q_label.long())
 

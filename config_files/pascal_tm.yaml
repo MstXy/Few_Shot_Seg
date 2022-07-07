@@ -69,7 +69,7 @@ MODEL:
 
 Classifier:
   dist: cosN
-  cls_type: ooo
+  cls_type: rooo
 
 EVALUATION:
   shot: 1
