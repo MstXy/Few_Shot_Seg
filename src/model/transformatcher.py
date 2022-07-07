@@ -184,7 +184,10 @@ class TransforMatcher(nn.Module):
         self.downsample = nn.MaxPool2d(2) # downsample by factor of 2
         # self.downsample_1024 = nn.Conv2d(1024, 1024, (1,1), 2)
         # self.downsample_2048 = nn.Conv2d(2048, 2048, (1,1), 2)
-
+        
+        if self.args.layers == 50:
+            self.nbottlenecks = [3, 4, 6, 3]
+            self.feature_channels = [256, 512, 1024, 2048]
         self.red_dim = args.red_dim
         self.bid_lst = [int(num) for num in list(args.rmid[1:])]  # [1, 2, 3, 4]
 

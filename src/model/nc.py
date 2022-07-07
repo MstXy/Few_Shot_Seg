@@ -15,6 +15,9 @@ class NC(nn.Module):
         self.red_dim = args.red_dim
         self.bid_lst = [int(num) for num in list(args.rmid[1:])]  # [1, 2, 3, 4]
 
+        if self.args.layers == 50:
+            self.nbottlenecks = [3, 4, 6, 3]
+            self.feature_channels = [256, 512, 1024, 2048]
         if self.red_dim != False:
             for bid in self.bid_lst:
                 c_in = self.feature_channels[bid-1]
