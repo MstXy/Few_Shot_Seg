@@ -38,6 +38,7 @@ TRAIN:
   main_optim: SGD
   scheduler: cosine
   milestones: [40, 70]
+  log_iter: 1190
   adapt_iter: 200
 
 MODEL:
@@ -57,7 +58,7 @@ MODEL:
   att_wt: 0.2
   rmid: l34      # nr, l2, l4
 
-  red_dim: 512
+  red_dim: False
   wa: False
 
   inner_loss_type: wt_ce
@@ -68,7 +69,7 @@ MODEL:
   hyperpixel_ids: [13,16]
 
 Classifier:
-  dist: cosN
+  dist: dot
   cls_type: rooo
 
 EVALUATION:
@@ -76,7 +77,7 @@ EVALUATION:
   random_shot: False
   episodic: True
   norm_feat: True
-  batch_size_val: 100
+  batch_size_val: 1
   manual_seed: 2021
   ckpt_used: best
   test_num: 1000
@@ -85,4 +86,4 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: l34_tm_nh_rd
+  exp_name: l34_tm_nh

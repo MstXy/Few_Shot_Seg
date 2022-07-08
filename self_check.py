@@ -32,8 +32,8 @@ Trans = TransforMatcher(args).cuda()
 # Trans = NC(args, hyperpixel_ids = args.hyperpixel_ids).cuda()
 
 
-pytorch_total_params = sum(p.numel() for p in Trans.parameters() if p.requires_grad)
-print(pytorch_total_params)
+# pytorch_total_params = sum(p.numel() for p in Trans.parameters() if p.requires_grad)
+# print(pytorch_total_params)
 
 spt_imgs = torch.randn(1, 5, 3, 473, 473).cuda()  # [1, n_shot, 3, h, w] 473, 473
 s_label = torch.randn(1, 1, 473, 473).cuda()  # [1, n_shot, h, w]
@@ -61,21 +61,34 @@ model.eval()
 with torch.no_grad():
     f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
     # pd_q0 = model.classifier(f_q)
-    # pd_s  = model.classifier(f_s)
     # pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
 if args.hyperpixel:
     model.eval()
     with torch.no_grad():
-        fs_lst = model.extract_hyper_features(spt_imgs) ##!! only suits for 1 shot only currently
+        fs_lst = model.extract_hyper_features(spt_imgs)
         fq_lst = model.extract_hyper_features(qry_img)
 
-print([f.shape for f in fs_lst])
-# Trans.train()
-# corr = Trans(fq_lst, fs_lst, f_q, f_s)
-# print(corr.shape)
-# pd_q1 = model.classifier(att_fq)
-# pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+Trans.train()
+criterion = SegLoss(loss_type=args.loss_type)
+q_loss1 = 0
+att_fq = []
+for k in range(args.shot):
+    single_fs_lst = [fs[k:k+1] for fs in fs_lst]
+    single_f_s = f_s[k:k+1]
+    print(single_f_s.shape)
+    print([f.shape for f in single_fs_lst])
+    fq, att_out = Trans(fq_lst, single_fs_lst, f_q, single_f_s,)
+    att_fq.append(att_out)
+    pred_att = model.classifier(att_out)
+    pred_att = F.interpolate(pred_att, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+    q_loss1 = q_loss1 + criterion(pred_att, q_label.long())
 
-# pd_q = model.classifier(fq)
-# pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
+att_fq = att_fq.mean(dim=0, keepdim=True)
+fq = f_q * (1-args.att_wt) + att_fq * args.att_wt
+
+pd_q1 = model.classifier(att_fq)
+pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+pd_q = model.classifier(fq)
+pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
