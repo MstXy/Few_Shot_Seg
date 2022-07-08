@@ -9,7 +9,7 @@ DATA:
   num_classes_tr: 2  # Counting background for training
   num_classes_val: 5
   use_split_coco: False
-  workers: 0
+  workers: 2
   image_size: 473
   padding_label: 255
   mean: [0.485, 0.456, 0.406]
@@ -22,10 +22,10 @@ DATA:
 
 TRAIN:
   ckpt_path: checkpoints/
-  batch_size: 1
+  batch_size: 2
   epochs: 10
   log_freq : 50
-  save_models: True
+  save_models: False
   cls_lr: 0.1
   trans_lr: 0.0015
   scale_lr: 1.0
@@ -60,13 +60,12 @@ MODEL:
   aux: False     #  False or input weight of aux loss
   inner_loss_type: wt_ce
   loss_type: wt_dc   # 'wt_dc',  'wt_ce'
-  loss_shot: avg
   agg: cat
   rmid: l34      # nr, l2, l4
   all_lr: l
 
   red_dim: False  # False or 512
-  wa: True        # True or False
+  wa: False        # True or False
   proj_drop: 0.5
   att_drop: 0.5
 
@@ -75,7 +74,7 @@ Classifier:
   cls_type: rooo
 
 EVALUATION:
-  shot: 5
+  shot: 1
   random_shot: False
   episodic: True
   norm_feat: True
@@ -88,7 +87,7 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: dotr_wa_avg
+  exp_name: dotr_l34
 
 DISTRIBUTED:
-  gpus: [0]
+  gpus: [0, 1]
