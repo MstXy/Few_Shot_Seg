@@ -43,8 +43,6 @@ def main(args: argparse.Namespace) -> None:
 
     log(args)
 
-    log('+++ Check performance of Cross Attention level4 reduce-dimension:1024 +++\n')
-
     if args.manual_seed is not None:
         cudnn.benchmark = False  # 为True的话可以对网络结构固定、网络的输入形状不变的 模型提速
         cudnn.deterministic = True
