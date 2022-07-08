@@ -23,10 +23,10 @@ DATA:
 TRAIN:
   ckpt_path: checkpoints/
   batch_size: 1
-  epochs: 20
+  epochs: 10
   log_freq : 50
   save_models: True
-  cls_lr: 0.0025
+  cls_lr: 0.1
   trans_lr: 0.002
   scale_lr: 1.0
   mixup: False
@@ -38,6 +38,7 @@ TRAIN:
   main_optim: SGD
   scheduler: cosine
   milestones: [40, 70]
+  log_iter: 1190
   adapt_iter: 200
 
 MODEL:
@@ -57,7 +58,7 @@ MODEL:
   att_wt: 0.2
   rmid: l34      # nr, l2, l4
 
-  red_dim: 512
+  red_dim: False
   wa: False
 
   inner_loss_type: wt_ce
@@ -65,18 +66,18 @@ MODEL:
   agg: cat
 
   hyperpixel: True
-  hyperpixel_ids: [13, 16]
+  hyperpixel_ids: [13,16]
 
 Classifier:
-  dist: cosN
-  cls_type: ooo
+  dist: dot
+  cls_type: rooo
 
 EVALUATION:
   shot: 1
   random_shot: False
   episodic: True
   norm_feat: True
-  batch_size_val: 100
+  batch_size_val: 1
   manual_seed: 2021
   ckpt_used: best
   test_num: 1000
@@ -85,4 +86,8 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: l34_nc_rd
+  exp_name: l34_nc
+
+DISTRIBUTED:
+  distributed: False
+  gpus: [0]

@@ -44,8 +44,6 @@ def main(args: argparse.Namespace) -> None:
 
     log(args)
 
-    log('+++ Check performance of Cross Attention level4 reduce-dimension:1024 +++\n')
-
     if args.manual_seed is not None:
         cudnn.benchmark = False  # 为True的话可以对网络结构固定、网络的输入形状不变的 模型提速
         cudnn.deterministic = True
@@ -149,25 +147,38 @@ def main(args: argparse.Namespace) -> None:
             if args.hyperpixel:
                 model.eval()
                 with torch.no_grad():
-                    fs_lst = model.extract_hyper_features(spt_imgs.squeeze(1)) ##!! only suits for 1 shot only currently
+                    fs_lst = model.extract_hyper_features(spt_imgs)
                     fq_lst = model.extract_hyper_features(qry_img)
 
             Trans.train()
-            fq, att_fq = Trans(fq_lst, fs_lst, f_q, f_s,)
+            criterion = SegLoss(loss_type=args.loss_type)
+            q_loss1 = 0
+            att_fq = torch.zeros_like(f_q)
+            for k in range(args.shot):
+                single_fs_lst = [fs[k:k+1] for fs in fs_lst]
+                single_f_s = f_s[k:k+1]
+                fq, att_out = Trans(fq_lst, single_fs_lst, f_q, single_f_s,)
+                att_fq = att_fq + att_out
+                pred_att = model.classifier(att_out)
+                pred_att = F.interpolate(pred_att, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+                q_loss1 = q_loss1 + criterion(pred_att, q_label.long())
+
+            att_fq = att_fq / args.shot
+            fq = f_q * (1-args.att_wt) + att_fq * args.att_wt
+
             pd_q1 = model.classifier(att_fq)
             pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
-
             pd_q = model.classifier(fq)
             pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
             # Loss function: Dynamic class weights used for query image only during training
-            criterion = SegLoss(loss_type=args.loss_type)
-            q_loss1 = criterion(pred_q1, q_label.long())
+            # criterion = SegLoss(loss_type=args.loss_type)
+            # q_loss1 = criterion(pred_q1, q_label.long())
             q_loss0 = criterion(pred_q0, q_label.long())
             q_loss  = criterion(pred_q, q_label.long())
 
             loss = q_loss1
-            if args.get('aux', False):
+            if args.get('aux', False) != False:
                 loss = q_loss1 + args.aux * q_loss
 
             optimizer_meta.zero_grad()
@@ -188,12 +199,15 @@ def main(args: argparse.Namespace) -> None:
             train_iou_meter1.update((IoUf[1] + IoUb[1]) / 2, 1)
             train_iou_compare.update(IoUf[1], IoUf[0])
 
-            if i%100==0 or (epoch==1 and i <= 1190):
-                log('Ep{}/{} IoUf0 {:.2f} IoUb0 {:.2f} IoUf1 {:.2f} IoUb1 {:.2f} IoUf {:.2f} IoUb {:.2f} '
-                    'loss0 {:.2f} loss1 {:.2f} d {:.2f} lr {:.4f}'.format(
+            if i%100==0 or (epoch==1 and i <= 1000 and i%20==0):
+                msg = 'Ep{}/{} IoUf0 {:.2f} IoUb0 {:.2f} IoUf1 {:.2f} IoUb1 {:.2f} IoUf {:.2f} IoUb {:.2f} ' \
+                      'loss0 {:.2f} loss1 {:.2f} d {:.2f} lr {:.4f}'.format(
                     epoch, i, IoUf[0], IoUb[0], IoUf[1], IoUb[1], IoUf[2], IoUb[2],
-                    q_loss0, q_loss1, q_loss1-q_loss0, optimizer_meta.param_groups[0]['lr']))
-            if i%1190==0:
+                    q_loss0, q_loss1, q_loss1-q_loss0, optimizer_meta.param_groups[0]['lr'])
+                if args.get('aux', False) != False:
+                    msg += 'auxL {:.2f}'.format(q_loss)
+                log(msg)
+            if i% args.log_iter==0:
                 log('------Ep{}/{} FG IoU1 compared to IoU0 win {}/{} avg diff {:.2f}'.format(epoch, i,
                     train_iou_compare.win_cnt, train_iou_compare.cnt, train_iou_compare.diff_avg))
                 train_iou_compare.reset()
@@ -202,6 +216,7 @@ def main(args: argparse.Namespace) -> None:
                 # Model selection
                 if val_Iou.item() > max_val_mIoU:
                     max_val_mIoU = val_Iou.item()
+                    log('----------- Max_mIoU = {:.3f}-----------'.format(max_val_mIoU))
                     filename_transformer = os.path.join(sv_path, f'best.pth')
                     if args.save_models:
                         log('=> Max_mIoU = {:.3f} Saving checkpoint to: {}'.format(max_val_mIoU, filename_transformer))
@@ -209,6 +224,7 @@ def main(args: argparse.Namespace) -> None:
                                     'optimizer': optimizer_meta.state_dict()}, filename_transformer)
                 if val_Iou1.item() > max_val_mIoU1:
                     max_val_mIoU1 = val_Iou1.item()
+                    log('----------- Max_mIoU1 = {:.3f}-----------'.format(max_val_mIoU1))
                     filename_transformer = os.path.join(sv_path, f'best1.pth')
                     if args.save_models:
                         log('=> Max_mIoU1 = {:.3f} Saving checkpoint to: {}'.format(max_val_mIoU1, filename_transformer))
@@ -278,21 +294,29 @@ def validate_epoch(args, val_loader, model, Net):
         with torch.no_grad():
             f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
             pd_q0 = model.classifier(f_q)
-            pd_s  = model.classifier(f_s)
             pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
         if args.hyperpixel:
             with torch.no_grad():
-                fs_lst = model.extract_hyper_features(spt_imgs.squeeze(1)) ##!! only suits for 1 shot only currently
+                fs_lst = model.extract_hyper_features(spt_imgs)
                 fq_lst = model.extract_hyper_features(qry_img)
 
         Net.eval()
-        fq, att_fq = Net(fq_lst, fs_lst, f_q, f_s)
-        pd_q1 = model.classifier(att_fq)
-        pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+        with torch.no_grad():
+            att_fq = []
+            for k in range(args.shot):
+                single_fs_lst = [fs[k:k+1] for fs in fs_lst]
+                single_f_s = f_s[k:k+1]
+                fq, att_out = Net(fq_lst, single_fs_lst, f_q, single_f_s,)
+                att_fq.append(att_out)
+            att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
+            att_fq = att_fq.mean(dim=0, keepdim=True)
+            fq = f_q * (1-args.att_wt) + att_fq * args.att_wt
 
-        pd_q = model.classifier(fq)
-        pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+            pd_q1 = model.classifier(att_fq)
+            pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+            pd_q = model.classifier(fq)
+            pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
         # IoU and loss
         curr_cls = subcls[0].item()  # 当前episode所关注的cls

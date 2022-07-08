@@ -15,10 +15,9 @@ module purge
 
 DATA=$1
 SPLIT=$2
-LAYERS=$3
-SHOT=$4
-
-
+GPU=$3
+LAYERS=$4
+SHOT=$5
 
 echo "start"
 singularity exec --nv \
@@ -29,10 +28,7 @@ singularity exec --nv \
 					 --opts train_split ${SPLIT} \
 						    layers ${LAYERS} \
 						    shot ${SHOT} \
-						    cls_lr 0.1 \
-						    batch_size 1 \
-						    batch_size_val 1 \
-						    epochs 12 \
+						    gpus ${GPU} \
 					 > log_nc.txt 2>&1"
 
 echo "finish"

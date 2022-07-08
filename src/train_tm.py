@@ -152,18 +152,17 @@ def main(args: argparse.Namespace) -> None:
             Trans.train()
             criterion = SegLoss(loss_type=args.loss_type)
             q_loss1 = 0
-            att_fq = []
+            att_fq = torch.zeros_like(f_q)
             for k in range(args.shot):
                 single_fs_lst = [fs[k:k+1] for fs in fs_lst]
                 single_f_s = f_s[k:k+1]
                 fq, att_out = Trans(fq_lst, single_fs_lst, f_q, single_f_s,)
-                att_fq.append(att_out)
+                att_fq = att_fq + att_out
                 pred_att = model.classifier(att_out)
                 pred_att = F.interpolate(pred_att, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
                 q_loss1 = q_loss1 + criterion(pred_att, q_label.long())
 
-            att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
-            att_fq = att_fq.mean(dim=0, keepdim=True)
+            att_fq = att_fq / args.shot
             fq = f_q * (1-args.att_wt) + att_fq * args.att_wt
 
             pd_q1 = model.classifier(att_fq)

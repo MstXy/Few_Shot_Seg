@@ -19,8 +19,6 @@ GPU=$3
 LAYERS=$4
 SHOT=$5
 
-
-
 echo "start"
 singularity exec --nv \
 			--overlay /scratch/cz1627/overlay-25GB-500K.ext3:ro \
