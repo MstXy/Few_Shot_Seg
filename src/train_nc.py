@@ -313,16 +313,6 @@ def validate_epoch(args, val_loader, model, Net):
         Net.eval()
         with torch.no_grad():
             att_fq = []
-            for k in range(args.shot):
-                single_fs_lst = [fs[k:k+1] for fs in fs_lst]
-                single_f_s = f_s[k:k+1]
-                fq, att_out = Net(fq_lst, single_fs_lst, f_q, single_f_s,)
-                att_fq.append(att_out)
-            att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
-            att_fq = att_fq.mean(dim=0, keepdim=True)
-            fq = f_q * (1-args.att_wt) + att_fq * args.att_wt
-
-            att_fq = []
             weight_lst = []
             for k in range(args.shot):
                 single_fs_lst = [fs[k:k+1] for fs in fs_lst]
