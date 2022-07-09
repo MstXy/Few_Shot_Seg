@@ -29,7 +29,7 @@ singularity exec --nv \
 						    layers ${LAYERS} \
 						    shot ${SHOT} \
 						    gpus ${GPU} \
-					 > log.txt 2>&1"
+					 > log_test.txt 2>&1"
 
 echo "finish"
 

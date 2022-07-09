@@ -28,6 +28,7 @@ TRAIN:
   save_models: True
   cls_lr: 0.1
   trans_lr: 0.002
+  att_lr: 0.002
   scale_lr: 1.0
   mixup: False
   lr_stepsize: 30
@@ -86,7 +87,7 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: l34_nc_doublecheck
+  exp_name: l34_nc_att
 
 DISTRIBUTED:
   distributed: False

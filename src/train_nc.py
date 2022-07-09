@@ -100,7 +100,21 @@ def main(args: argparse.Namespace) -> None:
 
     # ======= Transformer ======= args, inner_channel=32, sem=True, wa=False
     Trans = NC(args, hyperpixel_ids = args.hyperpixel_ids).cuda()
-    optimizer_meta = get_optimizer(args, [dict(params=Trans.parameters(), lr=args.trans_lr * args.scale_lr)])
+    # ======= Attention Branch for 5 shot ===========
+    if args.shot > 1:
+        AttentionBranch = nn.Sequential(
+            nn.Conv2d(512, 256, (3,3)),
+            nn.MaxPool2d((3,3)),
+            nn.Conv2d(256, 1, (3,3)),
+            nn.AdaptiveAvgPool2d((1,1))
+        ) # output shape: [B, 1, 1, 1] (B=1)
+        optimizer_meta = get_optimizer(
+                                        args, 
+                                        [dict(params=Trans.parameters(), lr=args.trans_lr * args.scale_lr)] + \
+                                        [dict(params=AttentionBranch.parameters(), lr=args.att_lr)]
+                                    )
+    else:
+        optimizer_meta = get_optimizer(args, [dict(params=Trans.parameters(), lr=args.trans_lr * args.scale_lr)])
     scheduler = get_scheduler(args, optimizer_meta, len(train_loader))
 
     # ====== Metrics initialization ======
@@ -152,20 +166,30 @@ def main(args: argparse.Namespace) -> None:
 
             Trans.train()
             criterion = SegLoss(loss_type=args.loss_type)
-            q_loss1 = 0
-            att_fq = torch.zeros_like(f_q)
+            q_loss1 = []
+            att_fq = []
+            weight_lst = []
             for k in range(args.shot):
                 single_fs_lst = [fs[k:k+1] for fs in fs_lst]
                 single_f_s = f_s[k:k+1]
                 _, att_out = Trans(fq_lst, single_fs_lst, f_q, single_f_s,)
-                att_fq = att_fq + att_out
+                att_fq.append(att_out)
+                weight = AttentionBranch(single_f_s).squeeze().unsqueeze(0)
+                weight_lst.append(weight)
                 pred_att = model.classifier(att_out)
                 pred_att = F.interpolate(pred_att, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
-                q_loss1 = q_loss1 + criterion(pred_att, q_label.long())
+                q_loss1.append(criterion(pred_att, q_label.long()))
 
-            att_fq = att_fq / args.shot
+            # calculate weight:
+            weight_lst = torch.cat(weight_lst, dim=0) # [k] 
+            weight_lst = F.softmax(weight_lst, dim=0).view(-1,1,1,1) # [k,1,1,1] 
+
+            att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
+            att_fq = torch.sum(att_fq * weight_lst, dim=0, keepdim=True)
             fq = f_q * (1-args.att_wt) + att_fq * args.att_wt
 
+            q_loss1 = torch.cat(q_loss1, dim=0)  # [k]
+            q_loss1 = torch.sum(q_loss1 * weight_lst) # scalar
             pd_q1 = model.classifier(att_fq)
             pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
             pd_q = model.classifier(fq)
@@ -211,7 +235,7 @@ def main(args: argparse.Namespace) -> None:
                 log('------Ep{}/{} FG IoU1 compared to IoU0 win {}/{} avg diff {:.2f}'.format(epoch, i,
                     train_iou_compare.win_cnt, train_iou_compare.cnt, train_iou_compare.diff_avg))
                 train_iou_compare.reset()
-                val_Iou, val_Iou1, val_loss = validate_epoch(args=args, val_loader=episodic_val_loader, model=model, Net=Trans)
+                val_Iou, val_Iou1, val_loss = validate_epoch(args=args, val_loader=episodic_val_loader, model=model, Net=Trans, AB=AttentionBranch)
 
                 # Model selection
                 if val_Iou.item() > max_val_mIoU:
@@ -245,7 +269,7 @@ def main(args: argparse.Namespace) -> None:
             filename_transformer)
 
 
-def validate_epoch(args, val_loader, model, Net):
+def validate_epoch(args, val_loader, model, Net, AB):
     log('==> Start testing')
 
     iter_num = 0
@@ -311,6 +335,24 @@ def validate_epoch(args, val_loader, model, Net):
                 att_fq.append(att_out)
             att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
             att_fq = att_fq.mean(dim=0, keepdim=True)
+            fq = f_q * (1-args.att_wt) + att_fq * args.att_wt
+
+            att_fq = []
+            weight_lst = []
+            for k in range(args.shot):
+                single_fs_lst = [fs[k:k+1] for fs in fs_lst]
+                single_f_s = f_s[k:k+1]
+                _, att_out = Net(fq_lst, single_fs_lst, f_q, single_f_s,)
+                att_fq.append(att_out)
+                weight = AB(single_f_s).squeeze().unsqueeze(0)
+                weight_lst.append(weight)
+
+            # calculate weight:
+            weight_lst = torch.cat(weight_lst, dim=0) # [k] 
+            weight_lst = F.softmax(weight_lst, dim=0).view(-1,1,1,1) # [k,1,1,1] 
+
+            att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
+            att_fq = torch.sum(att_fq * weight_lst, dim=0, keepdim=True)
             fq = f_q * (1-args.att_wt) + att_fq * args.att_wt
 
             pd_q1 = model.classifier(att_fq)
