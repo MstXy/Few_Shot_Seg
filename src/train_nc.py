@@ -100,21 +100,7 @@ def main(args: argparse.Namespace) -> None:
 
     # ======= Transformer ======= args, inner_channel=32, sem=True, wa=False
     Trans = NC(args, hyperpixel_ids = args.hyperpixel_ids).cuda()
-    # ======= Attention Branch for 5 shot ===========
-    if args.shot > 1:
-        AttentionBranch = nn.Sequential(
-            nn.Conv2d(512, 256, (3,3)),
-            nn.MaxPool2d((3,3)),
-            nn.Conv2d(256, 1, (3,3)),
-            nn.AdaptiveAvgPool2d((1,1))
-        ) # output shape: [B, 1, 1, 1] (B=1)
-        optimizer_meta = get_optimizer(
-                                        args, 
-                                        [dict(params=Trans.parameters(), lr=args.trans_lr * args.scale_lr)] + \
-                                        [dict(params=AttentionBranch.parameters(), lr=args.att_lr)]
-                                    )
-    else:
-        optimizer_meta = get_optimizer(args, [dict(params=Trans.parameters(), lr=args.trans_lr * args.scale_lr)])
+    optimizer_meta = get_optimizer(args, [dict(params=Trans.parameters(), lr=args.trans_lr * args.scale_lr)])
     scheduler = get_scheduler(args, optimizer_meta, len(train_loader))
 
     # ====== Metrics initialization ======
@@ -172,9 +158,8 @@ def main(args: argparse.Namespace) -> None:
             for k in range(args.shot):
                 single_fs_lst = [fs[k:k+1] for fs in fs_lst]
                 single_f_s = f_s[k:k+1]
-                _, att_out = Trans(fq_lst, single_fs_lst, f_q, single_f_s,)
+                _, att_out, weight = Trans(fq_lst, single_fs_lst, f_q, single_f_s,)
                 att_fq.append(att_out)
-                weight = AttentionBranch(single_f_s).squeeze().unsqueeze(0)
                 weight_lst.append(weight)
                 pred_att = model.classifier(att_out)
                 pred_att = F.interpolate(pred_att, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
@@ -235,7 +220,7 @@ def main(args: argparse.Namespace) -> None:
                 log('------Ep{}/{} FG IoU1 compared to IoU0 win {}/{} avg diff {:.2f}'.format(epoch, i,
                     train_iou_compare.win_cnt, train_iou_compare.cnt, train_iou_compare.diff_avg))
                 train_iou_compare.reset()
-                val_Iou, val_Iou1, val_loss = validate_epoch(args=args, val_loader=episodic_val_loader, model=model, Net=Trans, AB=AttentionBranch)
+                val_Iou, val_Iou1, val_loss = validate_epoch(args=args, val_loader=episodic_val_loader, model=model, Net=Trans)
 
                 # Model selection
                 if val_Iou.item() > max_val_mIoU:
@@ -269,7 +254,7 @@ def main(args: argparse.Namespace) -> None:
             filename_transformer)
 
 
-def validate_epoch(args, val_loader, model, Net, AB):
+def validate_epoch(args, val_loader, model, Net):
     log('==> Start testing')
 
     iter_num = 0
@@ -342,9 +327,8 @@ def validate_epoch(args, val_loader, model, Net, AB):
             for k in range(args.shot):
                 single_fs_lst = [fs[k:k+1] for fs in fs_lst]
                 single_f_s = f_s[k:k+1]
-                _, att_out = Net(fq_lst, single_fs_lst, f_q, single_f_s,)
+                _, att_out, weight = Net(fq_lst, single_fs_lst, f_q, single_f_s,)
                 att_fq.append(att_out)
-                weight = AB(single_f_s).squeeze().unsqueeze(0)
                 weight_lst.append(weight)
 
             # calculate weight:

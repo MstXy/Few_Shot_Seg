@@ -15,6 +15,14 @@ class NC(nn.Module):
 
         match_ch = len(hyperpixel_ids)
         self.corr_net = MatchNet(temp=args.temp, cv_type='red', sce=False, cyc=False, sym_mode=True, in_channel=match_ch)
+        # ======= Attention Branch for 5 shot ===========
+        if args.shot > 1:
+            self.AttentionBranch = nn.Sequential(
+                nn.Conv2d(512, 256, (3,3)),
+                nn.MaxPool2d((3,3)),
+                nn.Conv2d(256, 1, (3,3)),
+                nn.AdaptiveAvgPool2d((1,1))
+            ) # output shape: [B, 1, 1, 1] (B=1)
 
     def forward(self, fq_lst, fs_lst, f_q, f_s): 
         B, ch, h, w = f_q.shape
@@ -32,7 +40,9 @@ class NC(nn.Module):
         att_fq = self.corr_net.corr_forward(corr4d, v=f_s)
         fq = F.normalize(f_q, p=2, dim=1) + F.normalize(att_fq, p=2, dim=1) * self.args.att_wt
 
-        return fq, att_fq
+        weight = self.AttentionBranch(f_s).squeeze().unsqueeze(0)
+
+        return fq, att_fq, weight
 
     def forward_mmn(self, fq_lst, fs_lst, f_q, f_s,):
         fq1, fq2, fq3, fq4 = fq_lst
