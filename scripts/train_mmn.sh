@@ -10,6 +10,7 @@
 #SBATCH --mail-user=lg154@nyu.edu
 #SBATCH --output=seg.out
 #SBATCH --gres=gpu # How much gpu need, n is the number
+#SBATCH --partition=v100,a100
 
 module purge
 
@@ -30,7 +31,7 @@ singularity exec --nv \
 					 --opts train_split ${SPLIT} \
 						    layers ${LAYERS} \
 						    shot ${SHOT} \
-					 > log_5shot.txt 2>&1"
+					 > log_5shot_new.txt 2>&1"
 
 echo "finish"
 

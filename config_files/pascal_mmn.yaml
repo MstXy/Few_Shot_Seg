@@ -41,6 +41,8 @@ TRAIN:
   log_iter: 1190
   adapt_iter: 200
 
+  use_amp: True
+
 MODEL:
   arch: resnet
   pretrained: False  # Means the backbone has been pre-trained
@@ -57,7 +59,7 @@ MODEL:
 
   temp: 20.0
   att_wt: 0.2
-  aux: False     #  False or input weight of aux loss
+  aux: 1.0     #  False or input weight of aux loss
   inner_loss_type: wt_ce
   loss_type: wt_dc   # 'wt_dc',  'wt_ce'
   loss_shot: avg
@@ -88,7 +90,7 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: dotr_wa_avg
+  exp_name: dotr_wa_aux1
 
 DISTRIBUTED:
   gpus: [0]
