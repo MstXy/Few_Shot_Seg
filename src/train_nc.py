@@ -163,7 +163,7 @@ def main(args: argparse.Namespace) -> None:
                 weight_lst.append(weight)
                 pred_att = model.classifier(att_out)
                 pred_att = F.interpolate(pred_att, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
-                q_loss1.append(criterion(pred_att, q_label.long()))
+                q_loss1.append(criterion(pred_att, q_label.long()).unsqueeze(0))
 
             # calculate weight:
             weight_lst = torch.cat(weight_lst, dim=0) # [k] 
