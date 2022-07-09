@@ -86,7 +86,7 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: l34_nc
+  exp_name: l34_nc_doublecheck
 
 DISTRIBUTED:
   distributed: False

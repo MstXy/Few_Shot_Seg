@@ -157,7 +157,7 @@ def main(args: argparse.Namespace) -> None:
             for k in range(args.shot):
                 single_fs_lst = [fs[k:k+1] for fs in fs_lst]
                 single_f_s = f_s[k:k+1]
-                fq, att_out = Trans(fq_lst, single_fs_lst, f_q, single_f_s,)
+                _, att_out = Trans(fq_lst, single_fs_lst, f_q, single_f_s,)
                 att_fq = att_fq + att_out
                 pred_att = model.classifier(att_out)
                 pred_att = F.interpolate(pred_att, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
