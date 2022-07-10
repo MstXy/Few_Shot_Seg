@@ -10,6 +10,7 @@
 #SBATCH --mail-user=cz1627@nyu.edu
 #SBATCH --output=seg.out
 #SBATCH --gres=gpu
+#SBATCH --partition=a100,rtx8000
 
 module purge
 
@@ -29,7 +30,7 @@ singularity exec --nv \
 						    layers ${LAYERS} \
 						    shot ${SHOT} \
 						    gpus ${GPU} \
-					 > log_test.txt 2>&1"
+					 > log_2.txt 2>&1"
 
 echo "finish"
 

@@ -43,7 +43,7 @@ class NC(nn.Module):
         att_fq = self.corr_net.corr_forward(corr4d, v=f_s)
         fq = F.normalize(f_q, p=2, dim=1) + F.normalize(att_fq, p=2, dim=1) * self.args.att_wt
 
-        comp_feature = torch.cat((f_q, f_s), dim=0)
+        comp_feature = torch.cat((f_q, f_s), dim=1)
         weight = self.AttentionBranch(comp_feature).squeeze().unsqueeze(0)
 
         return fq, att_fq, weight
