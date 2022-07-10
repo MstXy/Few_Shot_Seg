@@ -18,7 +18,10 @@ class NC(nn.Module):
         # ======= Attention Branch for 5 shot ===========
         if args.shot > 1:
             self.AttentionBranch = nn.Sequential(
-                nn.Conv2d(512, 256, (3,3)),
+                nn.Conv2d(1024, 256, (3,3), padding=2, dilation=2, bias = True),
+                nn.ReLU(),
+                nn.Dropout2d(p=0.5),
+                nn.Conv2d(256, 256, (3,3)),
                 nn.MaxPool2d((3,3)),
                 nn.Conv2d(256, 1, (3,3)),
                 nn.AdaptiveAvgPool2d((1,1))
@@ -40,7 +43,8 @@ class NC(nn.Module):
         att_fq = self.corr_net.corr_forward(corr4d, v=f_s)
         fq = F.normalize(f_q, p=2, dim=1) + F.normalize(att_fq, p=2, dim=1) * self.args.att_wt
 
-        weight = self.AttentionBranch(f_s).squeeze().unsqueeze(0)
+        comp_feature = torch.cat((f_q, f_s), dim=0)
+        weight = self.AttentionBranch(comp_feature).squeeze().unsqueeze(0)
 
         return fq, att_fq, weight
 

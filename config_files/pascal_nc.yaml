@@ -87,7 +87,7 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: l34_nc_att
+  exp_name: l34_nc_att_2
 
 DISTRIBUTED:
   distributed: False
