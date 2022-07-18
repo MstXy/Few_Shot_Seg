@@ -43,7 +43,7 @@ def parse_args() -> argparse.Namespace:
 
 def main(args: argparse.Namespace) -> None:
 
-    sv_path = 'pretrain_{}/{}{}/shot{}_split{}/{}'.format(
+    sv_path = 'pretrain_{}/{}{}/split{}_shot{}/{}'.format(
         args.train_name, args.arch, args.layers, args.train_split, args.shot, args.exp_name)
     sv_path = os.path.join('./results', sv_path)
     ensure_path(sv_path)
@@ -221,8 +221,6 @@ def compute_loss(args, model, images, targets, num_classes):
 
 def standard_validate(args, val_loader, model, use_callback):
 
-    pdb.set_trace()
-
     loss_meter = AverageMeter()
     intersections = torch.zeros(args.num_classes_tr).cuda()
     unions = torch.zeros(args.num_classes_tr).cuda()
@@ -253,4 +251,6 @@ def standard_validate(args, val_loader, model, use_callback):
 if __name__ == "__main__":
     args = parse_args()
 
+    world_size = len(args.gpus)
+    args.distributed = (world_size > 1)
     main(args)
