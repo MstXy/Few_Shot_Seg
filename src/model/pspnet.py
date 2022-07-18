@@ -101,10 +101,10 @@ class PSPNet(nn.Module):
         if args.arch == 'resnet':
             if args.layers == 50:
                 resnet = resnet50(pretrained=args.pretrained, **resnet_kwargs)  # nbottlenecks = [3, 4, 6, 3]   # channels [256, 512, 1024, 2048]
-                self.backbone = resnet
+                # self.backbone = resnet
             else:
                 resnet = resnet101(pretrained=args.pretrained, **resnet_kwargs) # nbottlenecks = [3, 4, 23, 3]  # channels [256, 512, 1024, 2048]
-                self.backbone = resnet
+                # self.backbone = resnet
 
             self.layer0 = nn.Sequential(resnet.conv1, resnet.bn1, resnet.relu,
                                         resnet.conv2, resnet.bn2, resnet.relu,
