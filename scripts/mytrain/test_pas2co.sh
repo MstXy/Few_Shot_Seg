@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=1s_pa
+#SBATCH --job-name=pa2co
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
@@ -16,11 +16,9 @@
 
 module purge
 
-DATA=$1
-SPLIT=$2
-LAYERS=$3
-SHOT=$4
-
+SPLIT=$1
+LAYERS=$2
+SHOT=$3
 
 
 echo "start"
@@ -28,11 +26,12 @@ singularity exec --nv \
             --overlay /scratch/cz1627/overlay-25GB-500K.ext3:ro \
 			/scratch/cz1627/cuda11.4.2-cudnn8.2.4-devel-ubuntu20.04.3.sif \
             /bin/bash -c " source /ext3/env.sh;
-            python -m src.train_kshot --config config_files/${DATA}_mmn_check.yaml \
+            python -m src.test_kshot --config config_files/pascal2coco.yaml \
 					 --opts train_split ${SPLIT} \
+					 		test_split ${SPLIT} \
 						    layers ${LAYERS} \
 						    shot ${SHOT} \
-					 > log_1s_pas.txt 2>&1"
+					 > log_pas2co.txt 2>&1"
 
 echo "finish"
 
