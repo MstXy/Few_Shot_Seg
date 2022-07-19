@@ -85,7 +85,7 @@ EVALUATION:
   test_num: 1000
   FB_param_noise: 0
   smoothing: True
-  n_runs: 1
+  n_runs: 5
 
 Experiment:
   exp_name: dotr_wa_model

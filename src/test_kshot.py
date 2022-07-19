@@ -107,18 +107,17 @@ def main(args: argparse.Namespace) -> None:
                         )
         filepath = os.path.join(root_trans, f'{args.ckpt_used}.pth')
         assert os.path.isfile(filepath), filepath
-        print("=> loading transformer weight '{}'".format(filepath))
+        log("=> loading transformer weight '{}'".format(filepath))
         checkpoint = torch.load(filepath)
         Trans.load_state_dict(checkpoint['state_dict'])
-        print("=> loaded transformer weight '{}'".format(filepath))
+        log("=> loaded transformer weight '{}'".format(filepath))
     else:
-        print("=> Not loading anything")
+        log("=> Not loading anything")
 
 
     # ====== Metrics initialization ======
     max_val_mIoU, max_val_mIoU1 = 0., 0.
-
-    for i in range(1, len(episodic_val_loader)+1):
+    for i in range(1, args.n_runs+1):
         val_Iou, val_Iou1, val_loss = validate_epoch(args=args, val_loader=episodic_val_loader, model=model, Net=Trans)
 
         # Model selection
