@@ -24,7 +24,7 @@ TRAIN:
   ckpt_path: checkpoints/
   batch_size: 1
   epochs: 3
-  save_models: False
+  save_models: True
   cls_lr: 0.05
   trans_lr: 0.0005
   scale_lr: 1.0

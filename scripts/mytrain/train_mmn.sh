@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=1s_pa
+#SBATCH --job-name=co
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
@@ -32,7 +32,7 @@ singularity exec --nv \
 					 --opts train_split ${SPLIT} \
 						    layers ${LAYERS} \
 						    shot ${SHOT} \
-					 > log_1s_pas.txt 2>&1"
+					 > log_1s_co.txt 2>&1"
 
 echo "finish"
 
