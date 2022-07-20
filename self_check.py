@@ -1,5 +1,5 @@
 from src.model.pspnet import *
-from src.model import TransforMatcher
+from src.model import MMN, SegLoss
 from src.model.nc import NC
 import torch
 import numpy as np
@@ -28,7 +28,7 @@ model = get_model(args).cuda()
 # model = get_model(args)
 
 # Trans = MMN(args, inner_channel=32, sem=args.sem, wa=args.wa).cuda()
-Trans = TransforMatcher(args).cuda()
+Trans = MMN(args, agg=args.agg, wa=args.wa, red_dim=args.red_dim).cuda()
 # Trans = NC(args, hyperpixel_ids = args.hyperpixel_ids).cuda()
 
 
@@ -36,8 +36,8 @@ Trans = TransforMatcher(args).cuda()
 # print(pytorch_total_params)
 
 spt_imgs = torch.randn(1, 5, 3, 473, 473).cuda()  # [1, n_shot, 3, h, w] 473, 473
-s_label = torch.randn(1, 1, 473, 473).cuda()  # [1, n_shot, h, w]
-q_label = torch.randn(1, 473, 473).cuda()  # [1, h, w]
+s_label = torch.randint(1,5, (1, 1, 473, 473)).cuda()  # [1, n_shot, h, w]
+q_label = torch.randint(1,5, (1, 473, 473)).cuda()  # [1, h, w]
 qry_img = torch.randn(1, 3, 473, 473).cuda()  # [1, 3, h, w]
 # spt_imgs = torch.randn(1, 1, 3, 473, 473)  # [1, n_shot, 3, h, w] 473, 473
 # s_label = torch.randn(1, 1, 473, 473)  # [1, n_shot, h, w]
@@ -63,32 +63,21 @@ with torch.no_grad():
     # pd_q0 = model.classifier(f_q)
     # pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
-if args.hyperpixel:
-    model.eval()
-    with torch.no_grad():
-        fs_lst = model.extract_hyper_features(spt_imgs)
-        fq_lst = model.extract_hyper_features(qry_img)
-
 Trans.train()
 criterion = SegLoss(loss_type=args.loss_type)
-q_loss1 = 0
-att_fq = []
-for k in range(args.shot):
-    single_fs_lst = [fs[k:k+1] for fs in fs_lst]
-    single_f_s = f_s[k:k+1]
-    print(single_f_s.shape)
-    print([f.shape for f in single_fs_lst])
-    fq, att_out = Trans(fq_lst, single_fs_lst, f_q, single_f_s,)
-    att_fq.append(att_out)
-    pred_att = model.classifier(att_out)
-    pred_att = F.interpolate(pred_att, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
-    q_loss1 = q_loss1 + criterion(pred_att, q_label.long())
+# q_loss1 = 0
+# att_fq = []
+# for k in range(args.shot):
+#     single_fs_lst = {key: [ve[k:k + 1] for ve in value] for key, value in fs_lst.items()}
+#     single_f_s = f_s[k:k + 1]
+#     _, att_fq_single = Trans(fq_lst, single_fs_lst, f_q, single_f_s,)
+#     att_fq.append(att_fq_single)       # [ 1, 512, h, w]
 
-att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
-att_fq = att_fq.mean(dim=0, keepdim=True)
-fq = f_q * (1-args.att_wt) + att_fq * args.att_wt
+# att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
+# att_fq = att_fq.mean(dim=0, keepdim=True)
+# fq = f_q * (1-args.att_wt) + att_fq * args.att_wt
 
-pd_q1 = model.classifier(att_fq)
-pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
-pd_q = model.classifier(fq)
-pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+pd_q1 = model.classifier(f_q)
+pred_q = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+
+print(criterion(pred_q, q_label.long()))

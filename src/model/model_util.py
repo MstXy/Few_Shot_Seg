@@ -3,6 +3,7 @@
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
+from torch.distributions import Categorical
 
 
 class SegLoss(nn.Module):
@@ -16,6 +17,10 @@ class SegLoss(nn.Module):
         elif self.loss_type == 'ce':
             criterion_standard = nn.CrossEntropyLoss(ignore_index=255)
             return criterion_standard(prediction, target_seg)
+        elif self.loss_type == 'wt_dc_s':
+            return weighted_dice_loss(prediction, target_seg, reduction='sum') + 0.2 * shannon_entropy(prediction)
+        elif self.loss_type == 'wt_ce_s':
+            return weighted_ce_loss(prediction, target_seg, ignore_index=255) + 0.2 * shannon_entropy(prediction)
         else:
             return weighted_ce_loss(prediction, target_seg, ignore_index=255)
 
@@ -62,6 +67,21 @@ def weighted_dice_loss(prediction, target_seg, weighted_val: float = 1.0, reduct
     elif reduction == "mean":
         loss = loss.mean()
     return loss
+
+class HLoss(nn.Module):
+    def __init__(self):
+        super(HLoss, self).__init__()
+
+    def forward(self, x):
+        dim = x.size(-1) * x.size(-2)
+        b = F.softmax(x, dim=1) * F.log_softmax(x, dim=1)
+        b = -1.0 * b.sum() / dim
+        return b
+
+def shannon_entropy(pred):
+    loss = HLoss()
+    return loss(pred)
+
 
 
 def get_corr(q, k):

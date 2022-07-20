@@ -153,6 +153,14 @@ class PSPNet(nn.Module):
 
         self.gamma = nn.Parameter(torch.tensor(0.2))
 
+    # reset classifier parameters -> reinitialize all the features
+    def reset_parameters(self):
+        self.classifier = nn.Conv2d(self.bottleneck_dim, self.args.num_classes_tr, kernel_size=1, bias=False)
+        if self.args.cls_type[0] == 'r':
+            WeightNorm.apply(self.classifier, 'weight', dim=0)  # [2, 512, 1, 1]
+        if torch.cuda.is_available():
+            self.classifier.cuda()
+
     def freeze_bn(self):
         for m in self.modules():
             if not isinstance(m, nn.BatchNorm2d):
@@ -249,7 +257,9 @@ class PSPNet(nn.Module):
 
     def inner_loop(self, f_s, s_label):
         # input: f_s 为feature extractor输出的 feature map
-        self.classifier.reset_parameters()
+        # self.classifier.reset_parameters()
+        self.reset_parameters()
+        self.classifier.train()
 
         # optimizer and loss function
         optimizer = torch.optim.SGD(self.classifier.parameters(), lr=self.args.cls_lr)
