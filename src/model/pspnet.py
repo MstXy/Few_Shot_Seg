@@ -293,25 +293,34 @@ class PSPNet(nn.Module):
         cond_entropy = cond_entropy.sum(dim=(1, 2, 3))
         cond_entropy /= valid_pixels_q.sum(dim=(1, 2, 3))
 
+        d_kl = 0
         # KL -------
-        marginal = (valid_pixels_q.unsqueeze(2) * proba_q).sum(dim=(1, 3, 4))
-        marginal /= valid_pixels_q.sum(dim=(1, 2, 3)).unsqueeze(1)
+        if self.args.use_kl:
+            marginal = (valid_pixels_q.unsqueeze(2) * proba_q).sum(dim=(1, 3, 4))
+            marginal /= valid_pixels_q.sum(dim=(1, 2, 3)).unsqueeze(1)
 
-        one_hot_gt_q = self.to_one_hot(ds_gt_q, self.args.num_classes_tr)  # [n_tasks, shot, num_classes, h, w]
+            one_hot_gt_q = self.to_one_hot(ds_gt_q, self.args.num_classes_tr)  # [n_tasks, shot, num_classes, h, w]
 
-        oracle_FB_param = (valid_pixels_q.unsqueeze(2) * one_hot_gt_q).sum(dim=(1, 3, 4)) / valid_pixels_q.unsqueeze(2).sum(dim=(1, 3, 4))
+            # should not be using oracle here
+            # oracle_FB_param = (valid_pixels_q.unsqueeze(2) * one_hot_gt_q).sum(dim=(1, 3, 4)) / valid_pixels_q.unsqueeze(2).sum(dim=(1, 3, 4))
+            self.FB_param = (valid_pixels_q.unsqueeze(2) * proba_q).sum(dim=(1, 3, 4))
+            self.FB_param /= valid_pixels_q.unsqueeze(2).sum(dim=(1, 3, 4))
 
-        d_kl = (marginal * torch.log(marginal / (oracle_FB_param + 1e-10))).sum(1)
+            d_kl = (marginal * torch.log(marginal / (self.FB_param + 1e-10))).sum(1)
         # KL -------
 
         if reduction == 'sum':
             cond_entropy = cond_entropy.sum(0)
-            d_kl = d_kl.sum(0)
             assert not torch.isnan(cond_entropy), cond_entropy
-            assert not torch.isnan(d_kl), d_kl
+            # KL -------
+            if self.args.use_kl:
+                d_kl = d_kl.sum(0)
+                assert not torch.isnan(d_kl), d_kl
         elif reduction == 'mean':
             cond_entropy = cond_entropy.mean(0)
-            d_kl = d_kl.mean(0)
+            # KL -------
+            if self.args.use_kl:
+                d_kl = d_kl.mean(0)
         return cond_entropy + d_kl # Entropy of predictions [n_tasks,]
 
     def classify(self, features, shape):

@@ -64,6 +64,7 @@ MODEL:
   loss_type: wt_dc   # 'wt_dc',  'wt_ce'
 
   shannon_loss: True
+  use_kl: True
 
   loss_shot: avg
   agg: cat
@@ -93,7 +94,7 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: dotr_wa_shn_kl
+  exp_name: dotr_wa_shn_nora
 
 DISTRIBUTED:
   gpus: [0]
