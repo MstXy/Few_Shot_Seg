@@ -62,7 +62,9 @@ MODEL:
   aux: False   #  False or input weight of aux loss
   inner_loss_type: wt_ce
   loss_type: wt_dc   # 'wt_dc',  'wt_ce'
+
   shannon_loss: True
+
   loss_shot: avg
   agg: cat
   rmid: l34      # nr, l2, l4
@@ -91,7 +93,7 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: dotr_wa_shn
+  exp_name: dotr_wa_shn_kl
 
 DISTRIBUTED:
   gpus: [0]

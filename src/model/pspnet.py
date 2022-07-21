@@ -1,5 +1,6 @@
 # encoding:utf-8
 
+from turtle import up
 import torch
 import numpy as np
 from torch import nn
@@ -249,6 +250,22 @@ class PSPNet(nn.Module):
 
         return feats
 
+    def to_one_hot(self, mask: torch.tensor,
+               num_classes: int) -> torch.tensor:
+        """
+        inputs:
+            mask : shape [n_task, shot, h, w]
+            num_classes : Number of classes
+        returns :
+            one_hot_mask : shape [n_task, shot, num_class, h, w]
+        """
+        n_tasks, shot, h, w = mask.size()
+        one_hot_mask = torch.zeros(n_tasks, shot, num_classes, h, w).cuda()
+        new_mask = mask.unsqueeze(2).clone()
+        new_mask[torch.where(new_mask == 255)] = 0  # Ignore_pixels are anyways filtered out in the losses
+        one_hot_mask.scatter_(2, new_mask, 1).long()
+        return one_hot_mask
+
     def get_probas(self, logits: torch.tensor) -> torch.tensor:
         """
         inputs:
@@ -267,20 +284,35 @@ class PSPNet(nn.Module):
         # pred_q: [n_shot, 2, 60, 60]
         # q_label: [B, 473, 473]
         gt_q = q_label.unsqueeze(1) # [B, 1, 473, 473]
-        pred_q_ext = pred_q.unsqueeze(0) # [1, n_shot, 2, 60, 60]
-        ds_gt_q = F.interpolate(gt_q.float(), size=pred_q_ext.size()[-2:], mode='nearest').long()
+        proba_q = F.softmax(pred_q, dim=1)
+        proba_q = proba_q.unsqueeze(0) # [B, n_shot, 2, 60, 60]
+        
+        ds_gt_q = F.interpolate(gt_q.float(), size=proba_q.size()[-2:], mode='nearest').long()
         valid_pixels_q = (ds_gt_q != 255).float()
-        proba_q = self.get_probas(pred_q)
         cond_entropy = - ((valid_pixels_q.unsqueeze(2) * (proba_q * torch.log(proba_q + 1e-10))).sum(2))
         cond_entropy = cond_entropy.sum(dim=(1, 2, 3))
         cond_entropy /= valid_pixels_q.sum(dim=(1, 2, 3))
 
+        # KL -------
+        marginal = (valid_pixels_q.unsqueeze(2) * proba_q).sum(dim=(1, 3, 4))
+        marginal /= valid_pixels_q.sum(dim=(1, 2, 3)).unsqueeze(1)
+
+        one_hot_gt_q = self.to_one_hot(ds_gt_q, self.args.num_classes_tr)  # [n_tasks, shot, num_classes, h, w]
+
+        oracle_FB_param = (valid_pixels_q.unsqueeze(2) * one_hot_gt_q).sum(dim=(1, 3, 4)) / valid_pixels_q.unsqueeze(2).sum(dim=(1, 3, 4))
+
+        d_kl = (marginal * torch.log(marginal / (oracle_FB_param + 1e-10))).sum(1)
+        # KL -------
+
         if reduction == 'sum':
             cond_entropy = cond_entropy.sum(0)
+            d_kl = d_kl.sum(0)
             assert not torch.isnan(cond_entropy), cond_entropy
+            assert not torch.isnan(d_kl), d_kl
         elif reduction == 'mean':
             cond_entropy = cond_entropy.mean(0)
-        return cond_entropy # Entropy of predictions [n_tasks,]
+            d_kl = d_kl.mean(0)
+        return cond_entropy + d_kl # Entropy of predictions [n_tasks,]
 
     def classify(self, features, shape):
         x = self.classifier(features)
