@@ -36,8 +36,8 @@ Trans = MMN(args, agg=args.agg, wa=args.wa, red_dim=args.red_dim).cuda()
 # print(pytorch_total_params)
 
 spt_imgs = torch.randn(1, 1, 3, 473, 473).cuda()  # [1, n_shot, 3, h, w] 473, 473
-s_label = torch.randint(0,1, (1, 1, 473, 473)).cuda()  # [1, n_shot, h, w]
-q_label = torch.randint(0,1, (1, 473, 473)).cuda()  # [1, h, w]
+s_label = torch.randn(1, 1, 473, 473).cuda()  # [1, n_shot, h, w]
+q_label = torch.randn(1, 473, 473).cuda()  # [1, h, w]
 qry_img = torch.randn(1, 3, 473, 473).cuda()  # [1, 3, h, w]
 # spt_imgs = torch.randn(1, 1, 3, 473, 473)  # [1, n_shot, 3, h, w] 473, 473
 # s_label = torch.randn(1, 1, 473, 473)  # [1, n_shot, h, w]

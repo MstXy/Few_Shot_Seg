@@ -17,8 +17,6 @@ class SegLoss(nn.Module):
         elif self.loss_type == 'ce':
             criterion_standard = nn.CrossEntropyLoss(ignore_index=255)
             return criterion_standard(prediction, target_seg)
-        elif self.loss_type == 'shn':
-            return shannon_entropy(prediction, target_seg, reduction='sum')
         else:
             return weighted_ce_loss(prediction, target_seg, ignore_index=255)
 
@@ -65,41 +63,6 @@ def weighted_dice_loss(prediction, target_seg, weighted_val: float = 1.0, reduct
     elif reduction == "mean":
         loss = loss.mean()
     return loss
-
-def get_probas(logits: torch.tensor) -> torch.tensor:
-        """
-        inputs:
-            logits : shape [n_tasks, shot, h, w]
-        returns :
-            probas : shape [n_tasks, shot, num_classes, h, w]
-        """
-        # logits_fg = logits - self.bias.unsqueeze(1).unsqueeze(2).unsqueeze(3)  # [n_tasks, shot, h, w]
-        logits_fg = logits # [n_tasks, shot, h, w]
-        probas_fg = torch.sigmoid(logits_fg).unsqueeze(2)
-        probas_bg = 1 - probas_fg
-        probas = torch.cat([probas_bg, probas_fg], dim=2)
-        return probas
-
-def shannon_entropy(pred_q, q_label, reduction='sum'):
-    # pred_q: [n_shot, 2, 60, 60]
-    # q_label: [B, 473, 473]
-    gt_q = q_label.unsqueeze(1) # [B, 1, 473, 473]
-    pred_q_ext = pred_q.unsqueeze(0) # [1, n_shot, 2, 60, 60]
-    ds_gt_q = F.interpolate(gt_q.float(), size=pred_q_ext.size()[-2:], mode='nearest').long()
-    valid_pixels_q = (ds_gt_q != 255).float()
-    proba_q = get_probas(pred_q)
-    cond_entropy = - ((valid_pixels_q.unsqueeze(2) * (proba_q * torch.log(proba_q + 1e-10))).sum(2))
-    cond_entropy = cond_entropy.sum(dim=(1, 2, 3))
-    cond_entropy /= valid_pixels_q.sum(dim=(1, 2, 3))
-
-    if reduction == 'sum':
-        cond_entropy = cond_entropy.sum(0)
-        assert not torch.isnan(cond_entropy), cond_entropy
-    elif reduction == 'mean':
-        cond_entropy = cond_entropy.mean(0)
-    return cond_entropy # Entropy of predictions [n_tasks,]
-
-
 
 
 def get_corr(q, k):

@@ -249,6 +249,39 @@ class PSPNet(nn.Module):
 
         return feats
 
+    def get_probas(self, logits: torch.tensor) -> torch.tensor:
+        """
+        inputs:
+            logits : shape [n_tasks, shot, h, w]
+        returns :
+            probas : shape [n_tasks, shot, num_classes, h, w]
+        """
+        # logits_fg = logits - self.bias.unsqueeze(1).unsqueeze(2).unsqueeze(3)  # [n_tasks, shot, h, w]
+        logits_fg = logits # [n_tasks, shot, h, w]
+        probas_fg = torch.sigmoid(logits_fg).unsqueeze(2)
+        probas_bg = 1 - probas_fg
+        probas = torch.cat([probas_bg, probas_fg], dim=2)
+        return probas
+
+    def shannon_entropy(self, pred_q, q_label, reduction='sum'):
+        # pred_q: [n_shot, 2, 60, 60]
+        # q_label: [B, 473, 473]
+        gt_q = q_label.unsqueeze(1) # [B, 1, 473, 473]
+        pred_q_ext = pred_q.unsqueeze(0) # [1, n_shot, 2, 60, 60]
+        ds_gt_q = F.interpolate(gt_q.float(), size=pred_q_ext.size()[-2:], mode='nearest').long()
+        valid_pixels_q = (ds_gt_q != 255).float()
+        proba_q = self.get_probas(pred_q)
+        cond_entropy = - ((valid_pixels_q.unsqueeze(2) * (proba_q * torch.log(proba_q + 1e-10))).sum(2))
+        cond_entropy = cond_entropy.sum(dim=(1, 2, 3))
+        cond_entropy /= valid_pixels_q.sum(dim=(1, 2, 3))
+
+        if reduction == 'sum':
+            cond_entropy = cond_entropy.sum(0)
+            assert not torch.isnan(cond_entropy), cond_entropy
+        elif reduction == 'mean':
+            cond_entropy = cond_entropy.mean(0)
+        return cond_entropy # Entropy of predictions [n_tasks,]
+
     def classify(self, features, shape):
         x = self.classifier(features)
         if self.zoom_factor != 1:
@@ -266,9 +299,6 @@ class PSPNet(nn.Module):
 
         criterion = SegLoss(loss_type=self.args.inner_loss_type)
 
-        if self.args.shannon_loss:
-            criterion_shn = SegLoss(loss_type='shn')
-
         # inner loop 学习 classifier的params
         for index in range(self.args.adapt_iter):
             pred_s_label = self.classifier(f_s)  # [n_shot, 2(cls), 60, 60]
@@ -276,7 +306,7 @@ class PSPNet(nn.Module):
             s_loss = criterion(pred_s_label, s_label)  # pred_label: [n_shot, 2, 473, 473], label [n_shot, 473, 473]
             if self.args.shannon_loss:
                 pred_q = self.classifier(f_q)
-                shn_loss = criterion_shn(pred_q, q_label)
+                shn_loss = self.shannon_entropy(pred_q, q_label)
                 s_loss += shn_loss
             optimizer.zero_grad()
             s_loss.backward()
