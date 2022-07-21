@@ -255,7 +255,7 @@ class PSPNet(nn.Module):
             x = F.interpolate(x, size=shape, mode='bilinear', align_corners=True)
         return x
 
-    def inner_loop(self, f_s, s_label, f_q):
+    def inner_loop(self, f_s, s_label, f_q, q_label):
         # input: f_s 为feature extractor输出的 feature map
         # self.classifier.reset_parameters()
         self.reset_parameters()
@@ -276,7 +276,7 @@ class PSPNet(nn.Module):
             s_loss = criterion(pred_s_label, s_label)  # pred_label: [n_shot, 2, 473, 473], label [n_shot, 473, 473]
             if self.args.shannon_loss:
                 pred_q = self.classifier(f_q)
-                shn_loss = criterion_shn(pred_q, None, dim=512)
+                shn_loss = criterion_shn(pred_q, q_label)
                 s_loss += shn_loss
             optimizer.zero_grad()
             s_loss.backward()

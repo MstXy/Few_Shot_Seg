@@ -135,15 +135,17 @@ def main(args: argparse.Namespace) -> None:
             model.eval()
             with torch.no_grad():
                 f_s, fs_lst = model.extract_features(spt_imgs)  # f_s为ppm之后的feat, fs_lst为mid_feat
+                f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
+
             if args.shannon_loss:
-                model.inner_loop(f_s, s_label, f_q)
+
+                model.inner_loop(f_s, s_label, f_q, q_label)
             else:
                 model.inner_loop(f_s, s_label)
 
             # ====== Phase 2: Train the attention to update query score  ======
             model.eval()
             with torch.no_grad():
-                f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
                 pred_q0 = model.classifier(f_q)
                 pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
@@ -298,14 +300,15 @@ def validate_epoch(args, val_loader, model, Net):
         model.eval()
         with torch.no_grad():
             f_s, fs_lst = model.extract_features(spt_imgs)
+            f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
+
         if args.shannon_loss:
-            model.inner_loop(f_s, s_label, f_q)
+            model.inner_loop(f_s, s_label, f_q, q_label)
         else:
             model.inner_loop(f_s, s_label)
 
         # ====== Phase 2: Update query score using attention. ======
         with torch.no_grad():
-            f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
             pred_q0 = model.classifier(f_q)
             pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
