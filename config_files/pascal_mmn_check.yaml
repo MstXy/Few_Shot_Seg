@@ -61,7 +61,8 @@ MODEL:
   att_wt: 0.2
   aux: False   #  False or input weight of aux loss
   inner_loss_type: wt_ce
-  loss_type: wt_dc_s   # 'wt_dc',  'wt_ce'
+  loss_type: wt_dc   # 'wt_dc',  'wt_ce'
+  shannon_loss: True
   loss_shot: avg
   agg: cat
   rmid: l34      # nr, l2, l4

@@ -11,16 +11,14 @@ class SegLoss(nn.Module):
         super().__init__()
         self.loss_type = loss_type
 
-    def forward(self, prediction, target_seg,):
+    def forward(self, prediction, target_seg, dim=512):
         if self.loss_type=='wt_dc' or self.loss_type=='dc':
             return weighted_dice_loss(prediction, target_seg, reduction='sum')
         elif self.loss_type == 'ce':
             criterion_standard = nn.CrossEntropyLoss(ignore_index=255)
             return criterion_standard(prediction, target_seg)
-        elif self.loss_type == 'wt_dc_s':
-            return weighted_dice_loss(prediction, target_seg, reduction='sum') + 0.2 * shannon_entropy(prediction)
-        elif self.loss_type == 'wt_ce_s':
-            return weighted_ce_loss(prediction, target_seg, ignore_index=255) + 0.2 * shannon_entropy(prediction)
+        elif self.loss_type == 'shn':
+            return shannon_entropy(prediction, dim=512)
         else:
             return weighted_ce_loss(prediction, target_seg, ignore_index=255)
 
@@ -72,15 +70,14 @@ class HLoss(nn.Module):
     def __init__(self):
         super(HLoss, self).__init__()
 
-    def forward(self, x):
-        dim = x.size(-1) * x.size(-2)
+    def forward(self, x, d):
         b = F.softmax(x, dim=1) * F.log_softmax(x, dim=1)
-        b = -1.0 * b.sum() / dim
+        b = -1.0 * b.sum() / d
         return b
 
-def shannon_entropy(pred):
+def shannon_entropy(pred, dim):
     loss = HLoss()
-    return loss(pred)
+    return loss(pred, dim)
 
 
 
