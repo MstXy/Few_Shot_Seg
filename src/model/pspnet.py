@@ -280,12 +280,13 @@ class PSPNet(nn.Module):
         probas = torch.cat([probas_bg, probas_fg], dim=2)
         return probas
 
-    def shannon_entropy(self, pred_q, q_label, reduction='sum'):
+    def shannon_entropy(self, pred_q, q_label, iter, reduction='sum'):
         # pred_q: [n_shot, 2, 60, 60]
         # q_label: [B, 473, 473]
         gt_q = q_label.unsqueeze(1) # [B, 1, 473, 473]
         proba_q = F.softmax(pred_q, dim=1)
         proba_q = proba_q.unsqueeze(0) # [B, n_shot, 2, 60, 60]
+        proba_q = proba_q.detach()
         
         ds_gt_q = F.interpolate(gt_q.float(), size=proba_q.size()[-2:], mode='nearest').long()
         valid_pixels_q = (ds_gt_q != 255).float()
@@ -299,12 +300,13 @@ class PSPNet(nn.Module):
             marginal = (valid_pixels_q.unsqueeze(2) * proba_q).sum(dim=(1, 3, 4))
             marginal /= valid_pixels_q.sum(dim=(1, 2, 3)).unsqueeze(1)
 
-            one_hot_gt_q = self.to_one_hot(ds_gt_q, self.args.num_classes_tr)  # [n_tasks, shot, num_classes, h, w]
-
             # should not be using oracle here
-            # oracle_FB_param = (valid_pixels_q.unsqueeze(2) * one_hot_gt_q).sum(dim=(1, 3, 4)) / valid_pixels_q.unsqueeze(2).sum(dim=(1, 3, 4))
-            self.FB_param = (valid_pixels_q.unsqueeze(2) * proba_q).sum(dim=(1, 3, 4))
-            self.FB_param /= valid_pixels_q.unsqueeze(2).sum(dim=(1, 3, 4))
+            # one_hot_gt_q = self.to_one_hot(ds_gt_q, self.args.num_classes_tr)  # [n_tasks, shot, num_classes, h, w]
+            # self.FB_param = (valid_pixels_q.unsqueeze(2) * one_hot_gt_q).sum(dim=(1, 3, 4)) / valid_pixels_q.unsqueeze(2).sum(dim=(1, 3, 4))
+            
+            if iter == self.args.kl_iter or iter == 0:
+                self.FB_param = (valid_pixels_q.unsqueeze(2) * proba_q).sum(dim=(1, 3, 4))
+                self.FB_param /= valid_pixels_q.unsqueeze(2).sum(dim=(1, 3, 4))
 
             d_kl = (marginal * torch.log(marginal / (self.FB_param + 1e-10))).sum(1)
         # KL -------
@@ -347,7 +349,7 @@ class PSPNet(nn.Module):
             s_loss = criterion(pred_s_label, s_label)  # pred_label: [n_shot, 2, 473, 473], label [n_shot, 473, 473]
             if self.args.shannon_loss:
                 pred_q = self.classifier(f_q)
-                shn_loss = self.shannon_entropy(pred_q, q_label)
+                shn_loss = self.shannon_entropy(pred_q, q_label, index)
                 s_loss += shn_loss
             optimizer.zero_grad()
             s_loss.backward()
