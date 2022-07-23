@@ -39,7 +39,7 @@ TRAIN:
   scheduler: cosine
   milestones: [40, 70]
   log_iter: 1190
-  adapt_iter: 50 # 200
+  adapt_iter: 200 # 200
 
   use_amp: True
 
@@ -95,7 +95,7 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: dotr_wa_shn_kl_2
+  exp_name: dotr_wa_shn_kl_3
 
 DISTRIBUTED:
   gpus: [0]
