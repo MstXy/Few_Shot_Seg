@@ -26,7 +26,7 @@ TRAIN:
   epochs: 8
   log_freq : 50
   save_models: False
-  cls_lr: 0.1 # 0.0025?
+  cls_lr: 0.025 # 0.1  
   trans_lr: 0.0015
   scale_lr: 1.0
   mixup: False
@@ -39,7 +39,7 @@ TRAIN:
   scheduler: cosine
   milestones: [40, 70]
   log_iter: 1190
-  adapt_iter: 200 # 50?
+  adapt_iter: 50 # 200
 
   use_amp: True
 
@@ -95,7 +95,7 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: dotr_wa_shn_kl_1
+  exp_name: dotr_wa_shn_kl_2
 
 DISTRIBUTED:
   gpus: [0]
