@@ -85,6 +85,9 @@ class PSPNet(nn.Module):
         self.rmid = args.get('rmid', None)     # 是否返回中间层
         self.args = args                 # all_lr
 
+        # d_kl scalar
+        self.l2 = 0
+
         # 是否hyperpixel，即是否返回resnet每一层conv的结果。
         try:
             self.hyperpixel = args.hyperpixel
@@ -305,6 +308,7 @@ class PSPNet(nn.Module):
             # self.FB_param = (valid_pixels_q.unsqueeze(2) * one_hot_gt_q).sum(dim=(1, 3, 4)) / valid_pixels_q.unsqueeze(2).sum(dim=(1, 3, 4))
             
             if iter == self.args.kl_iter or iter == 0:
+                self.l2 += 1
                 self.FB_param = (valid_pixels_q.unsqueeze(2) * proba_q).sum(dim=(1, 3, 4))
                 self.FB_param /= valid_pixels_q.unsqueeze(2).sum(dim=(1, 3, 4))
 
@@ -323,7 +327,7 @@ class PSPNet(nn.Module):
             # KL -------
             if self.args.use_kl:
                 d_kl = d_kl.mean(0)
-        return cond_entropy + d_kl # Entropy of predictions [n_tasks,]
+        return cond_entropy + self.l2 * d_kl # Entropy of predictions [n_tasks,]
 
     def classify(self, features, shape):
         x = self.classifier(features)
