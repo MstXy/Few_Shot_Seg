@@ -12,7 +12,7 @@ import torch.backends.cudnn as cudnn
 import torch.nn.parallel
 import torch.utils.data
 from collections import defaultdict
-from .model import MMN, SegLoss
+from .model import MMN, SegLoss, reset_cls_wt, reset_spt_label, compress_pred
 from .model.pspnet import get_model
 from .optimizer import get_optimizer, get_scheduler
 from .dataset.dataset import get_val_loader, get_train_loader
@@ -35,7 +35,7 @@ def parse_args() -> argparse.Namespace:
 
 def main(args: argparse.Namespace) -> None:
 
-    sv_path = 'msc_{}/{}{}/split{}_shot{}/{}'.format(
+    sv_path = 'cca_{}/{}{}/split{}_shot{}/{}'.format(
         args.train_name, args.arch, args.layers, args.train_split, args.shot, args.exp_name)
     sv_path = os.path.join('./results', sv_path)
     ensure_path(sv_path)
@@ -58,17 +58,17 @@ def main(args: argparse.Namespace) -> None:
 
     if args.resume_weights:
         fname = args.resume_weights + args.train_name + '/' + \
-                'split={}/pspnet_{}{}/best0.pth'.format(args.train_split, args.arch, args.layers)
+                'split={}/pspnet_{}{}/best.pth'.format(args.train_split, args.arch, args.layers)
         if os.path.isfile(fname):
             log("=> loading weight '{}'".format(fname))
             pre_weight = torch.load(fname)['state_dict']
             model_dict = model.state_dict()
+            pre_cls_wt = pre_weight['classifier.weight'].cuda()    # [16, 512, 1, 1]
 
             for index, key in enumerate(model_dict.keys()):
                 if 'classifier' not in key and 'gamma' not in key:
-                    map_key = 'module.' + key  # if (args.train_name=='coco' and args.layers==101) else 'module.' + key
-                    if model_dict[key].shape == pre_weight[map_key].shape:
-                        model_dict[key] = pre_weight[map_key]
+                    if model_dict[key].shape == pre_weight[key].shape:
+                        model_dict[key] = pre_weight[key]
                     else:
                         log( 'Pre-trained shape and model shape dismatch for {}'.format(key) )
 
@@ -124,34 +124,38 @@ def main(args: argparse.Namespace) -> None:
                 s_label = s_label.cuda()  # [1, 1, h, w]
                 q_label = q_label.cuda()  # [1, h, w]
                 qry_img = qry_img.cuda()  # [1, 3, h, w]
+                subcls = subcls[0].cuda()  # [ tensor[id] ]
 
-            # ====== Phase 1: Train the binary classifier on support samples ======
+            # ================ Phase 1: Train the binary classifier on support samples ==============
 
             spt_imgs = spt_imgs.squeeze(0)       # [n_shots, 3, img_size, img_size]
             s_label = s_label.squeeze(0).long()  # [n_shots, img_size, img_size]
 
+            # reset weight and change s_label to 16 way classification
+            reset_cls_wt(model.classifier, pre_cls_wt, args.num_classes_tr, idx_cls=subcls)
+
+            model.eval()
+            with torch.no_grad():
+                f_s, fs_lst = model.extract_features(spt_imgs)
+                out = model.classifier(f_s)  # [1, 16, 60, 60]
+                out = F.interpolate(out, size=(473, 473), mode='bilinear', align_corners=True)
+
+            s_label = reset_spt_label(s_label, pred=out, idx_cls=subcls)
+
             # fine-tune classifier
-            model.eval()
+            model.increment_inner_loop(f_s, s_label, cls_idx=subcls, meta_train=True)
+
+            # ============== Phase 2: Train the attention to update query score  ==============
             with torch.no_grad():
-                f_s, fs_lst = model.extract_features(spt_imgs)  # f_s为ppm之后的feat, fs_lst为mid_feat
                 f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
-
-            if args.shannon_loss:
-
-                model.inner_loop(f_s, s_label, f_q, q_label)
-            else:
-                model.inner_loop(f_s, s_label)
-
-            # ====== Phase 2: Train the attention to update query score  ======
-            model.eval()
-            with torch.no_grad():
                 pred_q0 = model.classifier(f_q)
                 pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
+            Trans.train()
             use_amp=args.use_amp
             scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
-            Trans.train()
             criterion = SegLoss(loss_type=args.loss_type)
+
             att_fq = []
             sum_loss=0
             with torch.cuda.amp.autocast(enabled=use_amp):
@@ -175,12 +179,16 @@ def main(args: argparse.Namespace) -> None:
                 pred_q = model.classifier(fq)
                 pred_q = F.interpolate(pred_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
 
+                pred_q0 = compress_pred(pred_q0, subcls, 'lg')
+                pred_q1 = compress_pred(pred_q1, subcls, 'lg')
+                pred_q  = compress_pred(pred_q,  subcls, 'lg')
+
                 # Loss function: Dynamic class weights used for query image only during training
-                q_loss0 = criterion(pred_q0, q_label.long())
-                q_loss = criterion(pred_q, q_label.long())
+                q_loss0 = criterion(pred_q0, q_label.long(), 'pb')
+                q_loss = criterion(pred_q, q_label.long(), 'pb')
 
                 if args.loss_shot == 'avg':
-                    q_loss1 = criterion(pred_q1, q_label.long())
+                    q_loss1 = criterion(pred_q1, q_label.long(), 'pb')
                 else:   # 'sum'
                     q_loss1 = sum_loss
 
@@ -201,7 +209,7 @@ def main(args: argparse.Namespace) -> None:
             # Print loss and mIoU
             IoUb, IoUf = dict(), dict()
             for (pred, idx) in [(pred_q0, 0), (pred_q1, 1), (pred_q, 2)]:
-                intersection, union, target = intersectionAndUnionGPU(pred.argmax(1), q_label, args.num_classes_tr, 255)
+                intersection, union, target = intersectionAndUnionGPU(pred.argmax(1), q_label, num_classes=2, ignore_index=255)
                 IoUb[idx], IoUf[idx] = (intersection / (union + 1e-10)).cpu().numpy()  # mean of BG and FG
 
             train_loss_meter0.update(q_loss0.item() / args.batch_size, 1)
@@ -222,7 +230,7 @@ def main(args: argparse.Namespace) -> None:
                 log('------Ep{}/{} FG IoU1 compared to IoU0 win {}/{} avg diff {:.2f}'.format(epoch, i,
                     train_iou_compare.win_cnt, train_iou_compare.cnt, train_iou_compare.diff_avg))
                 train_iou_compare.reset()
-                val_Iou, val_Iou1, val_loss = validate_epoch(args=args, val_loader=episodic_val_loader, model=model, Net=Trans)
+                val_Iou, val_Iou1, val_loss = validate_epoch(args=args, val_loader=episodic_val_loader, model=model, Net=Trans, pre_cls_wt=pre_cls_wt)
 
                 # Model selection
                 if val_Iou.item() > max_val_mIoU:
@@ -256,7 +264,7 @@ def main(args: argparse.Namespace) -> None:
             filename_transformer)
 
 
-def validate_epoch(args, val_loader, model, Net):
+def validate_epoch(args, val_loader, model, Net, pre_cls_wt):
     log('==> Start testing')
 
     iter_num = 0
@@ -295,20 +303,24 @@ def validate_epoch(args, val_loader, model, Net):
         spt_imgs = spt_imgs.squeeze(0)   # [n_shots, 3, img_size, img_size]
         s_label = s_label.squeeze(0).long()  # [n_shots, img_size, img_size]
 
-        # fine-tune classifier
+        # reset weight and change s_label to 16 way classification
+        reset_cls_wt(model.val_classifier, pre_cls_wt, args.num_classes_tr, idx_cls=args.num_classes_tr)
+
         model.eval()
         with torch.no_grad():
             f_s, fs_lst = model.extract_features(spt_imgs)
-            f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
+            out = model.val_classifier(f_s)  # [1, 17, 60, 60]
+            out = F.interpolate(out, size=(473, 473), mode='bilinear', align_corners=True)
 
-        if args.shannon_loss:
-            model.inner_loop(f_s, s_label, f_q, q_label)
-        else:
-            model.inner_loop(f_s, s_label)
+        s_label = reset_spt_label(s_label, pred=out, idx_cls=args.num_classes_tr)
+
+        # fine-tune classifier
+        model.increment_inner_loop(f_s, s_label, cls_idx=args.num_classes_tr, meta_train=False)
 
         # ====== Phase 2: Update query score using attention. ======
         with torch.no_grad():
-            pred_q0 = model.classifier(f_q)
+            f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
+            pred_q0 = model.val_classifier(f_q)
             pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
         Net.eval()
@@ -323,10 +335,14 @@ def validate_epoch(args, val_loader, model, Net):
             att_fq = att_fq.mean(dim=0, keepdim=True)
             fq = f_q * (1 - args.att_wt) + att_fq * args.att_wt
 
-            pd_q1 = model.classifier(att_fq)
+            pd_q1 = model.val_classifier(att_fq)
             pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
-            pd_q = model.classifier(fq)
+            pd_q = model.val_classifier(fq)
             pred_q = F.interpolate(pd_q, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+
+        pred_q0 = compress_pred(pred_q0, idx_cls=args.num_classes_tr, input_type='lg')  # [1, 2, 473, 473]
+        pred_q1 = compress_pred(pred_q1, idx_cls=args.num_classes_tr, input_type='lg')
+        pred_q  = compress_pred(pred_q,  idx_cls=args.num_classes_tr, input_type='lg')
 
         # IoU and loss
         curr_cls = subcls[0].item()  # 当前episode所关注的cls
@@ -342,11 +358,11 @@ def validate_epoch(args, val_loader, model, Net):
             elif id==1: iouf1 = intersection[1]/union[1]
         val_iou_compare.update(iouf1,iouf0)   # compare 当前episode的IoU of att pred and pred0
 
-        criterion_standard = nn.CrossEntropyLoss(ignore_index=255)
-        loss1 = criterion_standard(pred_q1, q_label)
+        criterion_standard = nn.NLLLoss(ignore_index=255)
+        loss1 = criterion_standard(torch.log(pred_q1), q_label)
         loss_meter.update(loss1.item())
 
-        if (iter_num % 200 == 0):
+        if (iter_num % 100 == 0):
             mIoU = np.mean([IoU[i] for i in IoU])                                  # mIoU across cls
             mIoU0 = np.mean([IoU0[i] for i in IoU0])
             mIoU1 = np.mean([IoU1[i] for i in IoU1])

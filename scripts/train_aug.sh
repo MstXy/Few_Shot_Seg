@@ -1,15 +1,17 @@
 #!/bin/bash
 
-#SBATCH --job-name=seg
+#SBATCH --job-name=aug
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=20GB
-#SBATCH --time=24:00:00
+#SBATCH --time=48:00:00
 #SBATCH --mail-type=END
 #SBATCH --mail-user=lg154@nyu.edu
-#SBATCH --output=seg.out
+#SBATCH --output=aug.out
 #SBATCH --gres=gpu # How much gpu need, n is the number
+
+
 
 module purge
 
@@ -23,20 +25,15 @@ SHOT=$4
 echo "start"
 singularity exec --nv \
             --overlay /scratch/lg154/python36/python36.ext3:ro \
+            --overlay /scratch/lg154/sseg/dataset/coco2014.sqf:ro \
             /scratch/work/public/singularity/cuda11.2.2-cudnn8-devel-ubuntu20.04.sif \
             /bin/bash -c " source /ext3/env.sh;
-            python -m src.train_asy --config config_files/${DATA}_asy.yaml \
+            python -m src.train_aug --config config_files/${DATA}_aug.yaml \
 					 --opts train_split ${SPLIT} \
 						    layers ${LAYERS} \
 						    shot ${SHOT} \
-						    dist cos\
-						    cls_type nbt\
-						    cls_lr 0.1 \
-						    batch_size 1 \
-						    batch_size_val 1 \
-						    epochs 5 \
-						    exp_name onbt_nr4_tp40 \
-					 > log.txt 2>&1"
+						    meta_aug 2
+					 > log_aug.txt 2>&1"
 
 echo "finish"
 

@@ -1,46 +1,43 @@
 DATA:
-  train_name: pascal
-  test_name: default
+  train_name: coco
+  test_name: default     # test model on different data
   train_split: 0
-  test_split: default
-  train_list: lists/pascal/train.txt
-  data_root: ../dataset/VOCdevkit/VOC2012
-  val_list: lists/pascal/val.txt
-  num_classes_tr: 2  # Counting background for training
-  num_classes_val: 5
-  use_split_coco: False
-  workers: 0
+  test_split: default    # test model on different data
+  data_root: /coco/
+  train_list: lists/coco/train.txt
+  val_list: lists/coco/val.txt
+  num_classes_tr: 61    # Counting background for training
+  num_classes_val: 20
+  use_split_coco: True
+  workers: 2
   image_size: 473
   padding_label: 255
   mean: [0.485, 0.456, 0.406]
   std: [0.229, 0.224, 0.225]
-  scale_min: 0.33
-  scale_max: 3.0
+  scale_min: 0.5
+  scale_max: 2.0
   rot_min: -10
   rot_max: 10
   augmentations: ['hor_flip', 'resize_np']
 
-  meta_aug: 1  # default is 1/can not be 0
-
 TRAIN:
   ckpt_path: checkpoints/
   batch_size: 1
-  epochs: 8
-  log_freq : 50
+  epochs: 3
   save_models: False
-  cls_lr: 0.1
-  trans_lr: 0.0015
+  cls_lr: 0.05
+  trans_lr: 0.0005
   scale_lr: 1.0
   mixup: False
-  lr_stepsize: 30
+  lr_stepsize: 30       # LR scheduler
   momentum: 0.9
-  gamma: 0.1     # for scheduler
+  gamma: 0.1            # LR scheduler
   nesterov: True
   weight_decay: 0.0001
   main_optim: SGD
   scheduler: cosine
   milestones: [40, 70]
-  log_iter: 1190
+  log_iter: 2000
   adapt_iter: 200
 
   use_amp: True
@@ -53,15 +50,11 @@ MODEL:
   m_scale: False
   layers: 50
   bottleneck_dim: 512
-  backbone_dim: 2048
   resume_weights: ./pretrained_models/
-  model_dir: model_ckpt
-
-  conv4d: red  # red, cv4
 
   temp: 20.0
-  att_wt: 0.2
-  aux: False   #  False or input weight of aux loss
+  att_wt: 0.3
+  aux: False     #  False or input weight of aux loss
   inner_loss_type: wt_ce
   loss_type: wt_dc   # 'wt_dc',  'wt_ce'
   loss_shot: avg
@@ -74,15 +67,19 @@ MODEL:
   proj_drop: 0.5
   att_drop: 0.5
 
+  inherit_base: True
+
 Classifier:
   dist: dot
   cls_type: oooo
+  load_bg: False  # whether to load BG weight from base classifier
+
 
 EVALUATION:
   shot: 5
   random_shot: False
   episodic: True
-  norm_feat: True
+  norm_feat: True           # ?
   batch_size_val: 1
   manual_seed: 2021
   ckpt_used: best
@@ -91,8 +88,8 @@ EVALUATION:
   smoothing: True
   n_runs: 1
 
-EXPERIMENT:
-  exp_name: dot_wa_old_pre
+Experiment:
+  exp_name: l34_wa_wt3
 
 DISTRIBUTED:
   gpus: [0]

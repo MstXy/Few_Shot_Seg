@@ -35,7 +35,7 @@ def parse_args() -> argparse.Namespace:
 
 def main(args: argparse.Namespace) -> None:
 
-    sv_path = 'msc_{}/{}{}/split{}_shot{}/{}'.format(
+    sv_path = 'aug_{}/{}{}/split{}_shot{}/{}'.format(
         args.train_name, args.arch, args.layers, args.train_split, args.shot, args.exp_name)
     sv_path = os.path.join('./results', sv_path)
     ensure_path(sv_path)
@@ -58,7 +58,7 @@ def main(args: argparse.Namespace) -> None:
 
     if args.resume_weights:
         fname = args.resume_weights + args.train_name + '/' + \
-                'split={}/pspnet_{}{}/best0.pth'.format(args.train_split, args.arch, args.layers)
+                'split={}/pspnet_{}{}/best.pth'.format(args.train_split, args.arch, args.layers)
         if os.path.isfile(fname):
             log("=> loading weight '{}'".format(fname))
             pre_weight = torch.load(fname)['state_dict']
@@ -66,9 +66,8 @@ def main(args: argparse.Namespace) -> None:
 
             for index, key in enumerate(model_dict.keys()):
                 if 'classifier' not in key and 'gamma' not in key:
-                    map_key = 'module.' + key  # if (args.train_name=='coco' and args.layers==101) else 'module.' + key
-                    if model_dict[key].shape == pre_weight[map_key].shape:
-                        model_dict[key] = pre_weight[map_key]
+                    if model_dict[key].shape == pre_weight[key].shape:
+                        model_dict[key] = pre_weight[key]
                     else:
                         log( 'Pre-trained shape and model shape dismatch for {}'.format(key) )
 
@@ -134,17 +133,12 @@ def main(args: argparse.Namespace) -> None:
             model.eval()
             with torch.no_grad():
                 f_s, fs_lst = model.extract_features(spt_imgs)  # f_s为ppm之后的feat, fs_lst为mid_feat
-                f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
-
-            if args.shannon_loss:
-
-                model.inner_loop(f_s, s_label, f_q, q_label)
-            else:
-                model.inner_loop(f_s, s_label)
+            model.inner_loop(f_s, s_label)
 
             # ====== Phase 2: Train the attention to update query score  ======
             model.eval()
             with torch.no_grad():
+                f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
                 pred_q0 = model.classifier(f_q)
                 pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
@@ -156,8 +150,8 @@ def main(args: argparse.Namespace) -> None:
             sum_loss=0
             with torch.cuda.amp.autocast(enabled=use_amp):
                 for k in range(args.shot):
-                    single_fs_lst = {key: [ve[k:k + 1] for ve in value] for key, value in fs_lst.items()}
-                    single_f_s = f_s[k:k + 1]
+                    single_fs_lst = {key: [ve[k*args.meta_aug:k*args.meta_aug + 1] for ve in value] for key, value in fs_lst.items()}   # only compare to org img
+                    single_f_s = f_s[k*args.meta_aug:k*args.meta_aug + 1]
                     _, att_fq_single = Trans(fq_lst, single_fs_lst, f_q, single_f_s,)
                     att_fq.append(att_fq_single)       # [ 1, 512, h, w]
 
@@ -218,7 +212,7 @@ def main(args: argparse.Namespace) -> None:
                 if args.get('aux', False) != False:
                     msg += 'auxL {:.2f}'.format(q_loss)
                 log(msg)
-            if i% args.log_iter==0:
+            if i% args.log_iter==1:
                 log('------Ep{}/{} FG IoU1 compared to IoU0 win {}/{} avg diff {:.2f}'.format(epoch, i,
                     train_iou_compare.win_cnt, train_iou_compare.cnt, train_iou_compare.diff_avg))
                 train_iou_compare.reset()
@@ -275,6 +269,10 @@ def validate_epoch(args, val_loader, model, Net):
     cls_union1 = defaultdict(int)
     IoU1 = defaultdict(float)
 
+    cls_intersection2 = defaultdict(int)  # Default value is 0
+    cls_union2 = defaultdict(int)
+    IoU2 = defaultdict(float)
+
     val_iou_compare = CompareMeter()
 
     for e in range(args.test_num):
@@ -301,11 +299,7 @@ def validate_epoch(args, val_loader, model, Net):
             f_s, fs_lst = model.extract_features(spt_imgs)
             f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
 
-        if args.shannon_loss:
-            model.inner_loop(f_s, s_label, f_q, q_label)
-        else:
-            model.inner_loop(f_s, s_label)
-
+        model.inner_loop(f_s, s_label)
         # ====== Phase 2: Update query score using attention. ======
         with torch.no_grad():
             pred_q0 = model.classifier(f_q)
@@ -314,7 +308,7 @@ def validate_epoch(args, val_loader, model, Net):
         Net.eval()
         with torch.no_grad():
             att_fq = []
-            for k in range(args.shot):
+            for k in range(args.shot * args.meta_aug):
                 single_fs_lst = {key: [ve[k:k + 1] for ve in value] for key, value in fs_lst.items()}
                 single_f_s = f_s[k:k + 1]
                 _, att_out = Net(fq_lst, single_fs_lst, f_q, single_f_s, )
@@ -332,7 +326,7 @@ def validate_epoch(args, val_loader, model, Net):
         curr_cls = subcls[0].item()  # 当前episode所关注的cls
         for id, (cls_intersection_, cls_union_, IoU_, pred) in \
                 enumerate( [(cls_intersection0, cls_union0, IoU0, pred_q0), (cls_intersection1, cls_union1, IoU1, pred_q1),
-                 (cls_intersection, cls_union, IoU, pred_q)] ):
+                 (cls_intersection, cls_union, IoU, pred_q), ] ):
             intersection, union, target = intersectionAndUnionGPU(pred.argmax(1), q_label, 2, 255)
             intersection, union = intersection.cpu(), union.cpu()
             cls_intersection_[curr_cls] += intersection[1]  # only consider the FG
@@ -340,7 +334,11 @@ def validate_epoch(args, val_loader, model, Net):
             IoU_[curr_cls] = cls_intersection_[curr_cls] / (cls_union_[curr_cls] + 1e-10)   # cls wise IoU
             if id==0: iouf0 = intersection[1]/union[1]     # fg IoU for the current episode
             elif id==1: iouf1 = intersection[1]/union[1]
+
+
+
         val_iou_compare.update(iouf1,iouf0)   # compare 当前episode的IoU of att pred and pred0
+
 
         criterion_standard = nn.CrossEntropyLoss(ignore_index=255)
         loss1 = criterion_standard(pred_q1, q_label)
@@ -350,7 +348,7 @@ def validate_epoch(args, val_loader, model, Net):
             mIoU = np.mean([IoU[i] for i in IoU])                                  # mIoU across cls
             mIoU0 = np.mean([IoU0[i] for i in IoU0])
             mIoU1 = np.mean([IoU1[i] for i in IoU1])
-            log('Test: [{}/{}] mIoU0 {:.4f} mIoU1 {:.4f} mIoU {:.4f} Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f}) '.format(
+            log('==> Test: [{}/{}] mIoU0 {:.4f} mIoU1 {:.4f} mIoU {:.4f} Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f}) '.format(
                 iter_num, args.test_num, mIoU0, mIoU1, mIoU, loss_meter=loss_meter))
 
     runtime = time.time() - start_time
@@ -358,7 +356,7 @@ def validate_epoch(args, val_loader, model, Net):
     log('mIoU---Val result: mIoU0 {:.4f}, mIoU1 {:.4f} mIoU {:.4f} | time used {:.1f}m.'.format(
         mIoU0, mIoU1, mIoU, runtime/60))
     for class_ in cls_union:
-        log("Class {} : {:.4f}".format(class_, IoU[class_]))
+        log("Class {} : {:.4f} for pred0".format(class_, IoU0[class_]))
     log('------Val FG IoU1 compared to IoU0 win {}/{} avg diff {:.2f}'.format(
         val_iou_compare.win_cnt, val_iou_compare.cnt, val_iou_compare.diff_avg))
 
