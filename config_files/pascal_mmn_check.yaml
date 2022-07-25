@@ -26,7 +26,7 @@ TRAIN:
   epochs: 8
   log_freq : 50
   save_models: False
-  cls_lr: 0.025 # 0.1  
+  cls_lr: 0.1 # 0.1  
   trans_lr: 0.0015
   scale_lr: 1.0
   mixup: False
@@ -66,7 +66,7 @@ MODEL:
   shannon_loss: True
   use_kl: True
   kl_iter: 10
-
+  
   loss_shot: avg
   agg: cat
   rmid: l34      # nr, l2, l4
@@ -95,7 +95,7 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: dotr_wa_shn_kl_3
+  exp_name: dotr_wa_shn_kl_debug
 
 DISTRIBUTED:
   gpus: [0]
