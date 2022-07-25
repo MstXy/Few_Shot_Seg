@@ -439,4 +439,4 @@ def get_shannon_entropy(pred_q):
 
     shn_entropy = shn_entropy.sum(0)
     assert not torch.isnan(shn_entropy), shn_entropy
-    return shn_entropy
+    return shn_entropy    
