@@ -137,10 +137,7 @@ def main(args: argparse.Namespace) -> None:
                 f_s, fs_lst = model.extract_features(spt_imgs)  # f_s为ppm之后的feat, fs_lst为mid_feat
                 f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
 
-            if args.shannon_loss:
-                model.inner_loop(f_s, s_label, f_q, q_label)
-            else:
-                model.inner_loop(f_s, s_label)
+            model.inner_loop(f_s, s_label)
 
             # ====== Phase 2: Train the attention to update query score  ======
             model.eval()
@@ -169,17 +166,17 @@ def main(args: argparse.Namespace) -> None:
                 att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
                 att_fq = att_fq.mean(dim=0, keepdim=True)
 
-                # shannon entropy fusion -------------
-                pred_fatt = model.classifier(att_fq)
-                pred_fq = model.classifier(f_q)
-                shn_fatt = get_shannon_entropy(pred_fatt)
-                shn_fq = get_shannon_entropy(pred_fq)
-                shn_fatt = shn_fatt * -1
-                shn_fq = shn_fq * -1
-                att_wt = shn_fatt / (shn_fatt + shn_fq)
-                fq = f_q * (1-att_wt) + att_fq * att_wt
-                # ------------------------------------
-                # fq = f_q * (1-args.att_wt) + att_fq * args.att_wt
+                # # shannon entropy fusion -------------
+                # pred_fatt = model.classifier(att_fq)
+                # pred_fq = model.classifier(f_q)
+                # shn_fatt = get_shannon_entropy(pred_fatt)
+                # shn_fq = get_shannon_entropy(pred_fq)
+                # shn_fatt = shn_fatt * -1
+                # shn_fq = shn_fq * -1
+                # att_wt = shn_fatt / (shn_fatt + shn_fq)
+                # fq = f_q * (1-att_wt) + att_fq * att_wt
+                # # ------------------------------------
+                fq = f_q * (1-args.att_wt) + att_fq * args.att_wt
 
                 pred_q1 = model.classifier(att_fq)
                 pred_q1 = F.interpolate(pred_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
@@ -225,7 +222,7 @@ def main(args: argparse.Namespace) -> None:
                 msg = 'Ep{}/{} IoUf0 {:.2f} IoUb0 {:.2f} IoUf1 {:.2f} IoUb1 {:.2f} IoUf {:.2f} IoUb {:.2f} ' \
                       'loss0 {:.2f} loss1 {:.2f} d {:.2f} lr {:.4f} att_wt {:.4f}'.format(
                     epoch, i, IoUf[0], IoUb[0], IoUf[1], IoUb[1], IoUf[2], IoUb[2],
-                    q_loss0, q_loss1, q_loss1-q_loss0, optimizer_meta.param_groups[0]['lr'], att_wt)
+                    q_loss0, q_loss1, q_loss1-q_loss0, optimizer_meta.param_groups[0]['lr'], args.att_wt)
                 if args.get('aux', False) != False:
                     msg += 'auxL {:.2f}'.format(q_loss)
                 log(msg)
@@ -312,10 +309,7 @@ def validate_epoch(args, val_loader, model, Net):
             f_s, fs_lst = model.extract_features(spt_imgs)
             f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
 
-        if args.shannon_loss:
-            model.inner_loop(f_s, s_label, f_q, q_label)
-        else:
-            model.inner_loop(f_s, s_label)
+        model.inner_loop(f_s, s_label)
 
         # ====== Phase 2: Update query score using attention. ======
         with torch.no_grad():
@@ -332,17 +326,17 @@ def validate_epoch(args, val_loader, model, Net):
                 att_fq.append(att_out)  # [ 1, 512, h, w]
             att_fq = torch.cat(att_fq, dim=0)
             att_fq = att_fq.mean(dim=0, keepdim=True)
-            # shannon entropy fusion -------------
-            pred_fatt = model.classifier(att_fq)
-            pred_fq = model.classifier(f_q)
-            shn_fatt = get_shannon_entropy(pred_fatt)
-            shn_fq = get_shannon_entropy(pred_fq)
-            shn_fatt = shn_fatt * -1
-            shn_fq = shn_fq * -1
-            att_wt = shn_fatt / (shn_fatt + shn_fq)
-            fq = f_q * (1-att_wt) + att_fq * att_wt
-            # ------------------------------------
-            # fq = f_q * (1 - args.att_wt) + att_fq * args.att_wt
+            # # shannon entropy fusion -------------
+            # pred_fatt = model.classifier(att_fq)
+            # pred_fq = model.classifier(f_q)
+            # shn_fatt = get_shannon_entropy(pred_fatt)
+            # shn_fq = get_shannon_entropy(pred_fq)
+            # shn_fatt = shn_fatt * -1
+            # shn_fq = shn_fq * -1
+            # att_wt = shn_fatt / (shn_fatt + shn_fq)
+            # fq = f_q * (1-att_wt) + att_fq * att_wt
+            # # ------------------------------------
+            fq = f_q * (1 - args.att_wt) + att_fq * args.att_wt
 
             pd_q1 = model.classifier(att_fq)
             pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)

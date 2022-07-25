@@ -1,6 +1,5 @@
 # encoding:utf-8
 
-import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
@@ -8,43 +7,38 @@ from torch.distributions import Categorical
 
 
 class SegLoss(nn.Module):
-    def __init__(self, loss_type='wt_ce', num_cls=2, fg_idx=1):   # loss_type ['wt_ce', 'wt_dc']
+    def __init__(self, loss_type='wt_ce'):   # loss_type ['wt_ce', 'wt_dc']
         super().__init__()
         self.loss_type = loss_type
-        self.num_cls = num_cls
-        self.fg_idx = fg_idx
 
-    def forward(self, prediction, target_seg, input_type='lg'):
-        """whether prediction has already processed by CrossEntropy: 'pb':prob, 'lt':lg"""
+    def forward(self, prediction, target_seg):
         if self.loss_type=='wt_dc' or self.loss_type=='dc':
-            return weighted_dice_loss(prediction, target_seg, reduction='sum', input_type=input_type)
+            return weighted_dice_loss(prediction, target_seg, reduction='sum')
         elif self.loss_type == 'ce':
             criterion_standard = nn.CrossEntropyLoss(ignore_index=255)
             return criterion_standard(prediction, target_seg)
+        elif self.loss_type == 'shn':
+            return shannon_entropy(prediction, target_seg, reduction='sum')
         else:
-            return weighted_ce_loss(prediction, target_seg, ignore_index=255, num_cls=self.num_cls, fg_idx=self.fg_idx)
+            return weighted_ce_loss(prediction, target_seg, ignore_index=255)
 
 
-def weighted_ce_loss(pred, label, ignore_index=255, num_cls=2, fg_idx=1):
+def weighted_ce_loss(pred, label, ignore_index=255):
     count = torch.bincount(label.view(-1))
-    fg_cnt = count[fg_idx]
-    # bg_cnt = (torch.sum(count)-fg_cnt) if len(count)<=255 else (torch.sum(count)-count[255] -fg_cnt) # all pixels not belonging to current cls CONSIDERED as BG
-    bg_cnt = count[0]
-    weight = torch.tensor([1.0]*num_cls)
-    weight[fg_idx] = bg_cnt/fg_cnt
+    weight = torch.tensor([1.0, count[0]/count[1]])
     if torch.cuda.is_available():
         weight = weight.cuda()
     criterion = nn.CrossEntropyLoss(weight=weight, ignore_index=ignore_index)
     return criterion(pred, label)
 
 
-def weighted_dice_loss(prediction, target_seg, weighted_val=1.0, reduction="sum", input_type='lg', eps=1e-8,):
+def weighted_dice_loss(prediction, target_seg, weighted_val: float = 1.0, reduction: str = "sum", eps: float = 1e-8,):
     """
     Weighted version of Dice Loss
     Args:
         prediction: prediction
         target_seg: segmentation target
-        weighted_val: values of k positives, float
+        weighted_val: values of k positives,
         reduction: 'none' | 'mean' | 'sum'
         eps: the minimum eps,
     """
@@ -56,8 +50,7 @@ def weighted_dice_loss(prediction, target_seg, weighted_val=1.0, reduction="sum"
 
     prediction = prediction.reshape(-1, h, w)  # [B*2, h, w]
     target_seg = target_seg.reshape(-1, h, w)  # [B*2, h, w]
-    if input_type in ['lg', 'lt']:
-        prediction = torch.sigmoid(prediction)
+    prediction = torch.sigmoid(prediction)
     prediction = prediction.reshape(-1, h * w)  # [B*2, h*w]
     target_seg = target_seg.reshape(-1, h * w)  # [B*2, h*w]
 
@@ -73,6 +66,41 @@ def weighted_dice_loss(prediction, target_seg, weighted_val=1.0, reduction="sum"
         loss = loss.mean()
     return loss
 
+def get_probas(logits: torch.tensor) -> torch.tensor:
+        """
+        inputs:
+            logits : shape [n_tasks, shot, h, w]
+        returns :
+            probas : shape [n_tasks, shot, num_classes, h, w]
+        """
+        # logits_fg = logits - self.bias.unsqueeze(1).unsqueeze(2).unsqueeze(3)  # [n_tasks, shot, h, w]
+        logits_fg = logits # [n_tasks, shot, h, w]
+        probas_fg = torch.sigmoid(logits_fg).unsqueeze(2)
+        probas_bg = 1 - probas_fg
+        probas = torch.cat([probas_bg, probas_fg], dim=2)
+        return probas
+
+def shannon_entropy(pred_q, q_label, reduction='sum'):
+    # pred_q: [n_shot, 2, 60, 60]
+    # q_label: [B, 473, 473]
+    gt_q = q_label.unsqueeze(1) # [B, 1, 473, 473]
+    pred_q_ext = pred_q.unsqueeze(0) # [1, n_shot, 2, 60, 60]
+    ds_gt_q = F.interpolate(gt_q.float(), size=pred_q_ext.size()[-2:], mode='nearest').long()
+    valid_pixels_q = (ds_gt_q != 255).float()
+    proba_q = get_probas(pred_q)
+    cond_entropy = - ((valid_pixels_q.unsqueeze(2) * (proba_q * torch.log(proba_q + 1e-10))).sum(2))
+    cond_entropy = cond_entropy.sum(dim=(1, 2, 3))
+    cond_entropy /= valid_pixels_q.sum(dim=(1, 2, 3))
+
+    if reduction == 'sum':
+        cond_entropy = cond_entropy.sum(0)
+        assert not torch.isnan(cond_entropy), cond_entropy
+    elif reduction == 'mean':
+        cond_entropy = cond_entropy.mean(0)
+    return cond_entropy # Entropy of predictions [n_tasks,]
+
+
+
 
 def get_corr(q, k):
     bs, ch, height, width = q.shape
@@ -83,63 +111,6 @@ def get_corr(q, k):
     proj_k = F.normalize(proj_k, dim=-2)
     sim = torch.bmm(proj_q, proj_k)  # [1, 3600 (q_hw), 3600(k_hw)]
     return sim
-
-
-def reset_cls_wt(cls_module, pre_cls_wt, num_classes_tr, idx_cls):
-    B, ch, _, _ = cls_module.weight.shape
-    cls_module.weight.data[:num_classes_tr] = pre_cls_wt
-    std = 1.0 / np.sqrt(ch)
-    cls_module.weight.data[idx_cls] = torch.empty([ch], device=cls_module.weight.device).uniform_(-std, std).reshape((1, ch, 1, 1))
-
-
-def reset_spt_label(s_label, pred, idx_cls):
-    """modify s_label, BG will be replaced with the pseudo label from base cls, FG idx updated to idx for multi-way"""
-    pred[:, idx_cls, :, :] = -1000.0  # [1, 16/17, 473, 473]
-    pred_mask = pred.argmax(1)        # [1, 473, 473]
-
-    idx_bg = torch.where(s_label == 0)
-    s_label[idx_bg] = pred_mask[idx_bg]
-    s_label[torch.where(s_label == 1)] = idx_cls
-    return s_label
-
-
-def adapt_reset_spt_label(s_label, pred, pre_cls_wt, num_classes_tr, sub_cls=None):
-    """modify s_label, BG will be replaced with the pseudo label from base cls, FG idx updated to idx for multi-way
-    adapt: num of classes 根据spt图片中cls数量决定
-    """
-    pred_mask = pred.argmax(1)        # [1, 473, 473]
-
-    if sub_cls is not None and sub_cls > 0:                   # ONLY for meta train stage
-        pred_mask[ pred_mask == sub_cls ] = 0
-
-    s_label[s_label==1] = num_classes_tr   # FG to a temporary idx avoid conflict with base class id
-    idx_bg = torch.where(s_label == 0)
-    s_label[idx_bg] = pred_mask[idx_bg]
-
-    num_cls = 2
-    cls_init_wt = []
-    id_freq = torch.bincount(s_label.flatten())  # id: cls_idx val: freq  当前cls的id为16/num_classes_tr
-    for i in range(1, min(len(id_freq), num_classes_tr)):
-        if 0 < id_freq[i] <= 300 * len(s_label):
-            s_label[ s_label == i] = 0
-        elif id_freq[i] > 300 * len(s_label) and 0< i <num_classes_tr:  # 加一个新的cls
-            s_label[ s_label ==i ] = num_cls
-            num_cls += 1
-            cls_init_wt.append(pre_cls_wt[i])  # 存其 initial weight
-
-    s_label[s_label==num_classes_tr] = 1
-    return s_label, cls_init_wt, num_cls
-
-
-def compress_pred(pred, idx_cls, input_type='lg'):
-    """combine all BG with Base class to compute binary loss. input_type: 'lg', 'pb' """
-    if input_type in ['lg', 'lt']:
-        pred = F.softmax(pred)  # [B, nC, h, w]
-    B, C, h, w = pred.shape
-    new = torch.zeros((B, 2, h, w), device=pred.device)
-    new[:, 1, :, :] = pred[:, idx_cls, :, :]
-    new[:, 0, :, :] = 1.0 - new[:, 1, :, :]
-    return new
 
 
 def get_ig_mask(sim, s_label, q_label, pd_q0, pd_s): # sim [1, q_hw, k_hw]
