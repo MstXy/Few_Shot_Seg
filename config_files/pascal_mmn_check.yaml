@@ -91,6 +91,6 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: dotr_wa_shn_fuse
+  exp_name: dotr_wa_shn_fuse_pw
 DISTRIBUTED:
   gpus: [0]

@@ -439,4 +439,12 @@ def get_shannon_entropy(pred_q):
 
     shn_entropy = shn_entropy.sum(0)
     assert not torch.isnan(shn_entropy), shn_entropy
-    return shn_entropy    
+    return shn_entropy
+
+def get_shannon_entropy_pixelwise(pred_q):
+    # pred_q: [n_shot, 2, 60, 60]
+    proba_q = F.softmax(pred_q, dim=1)
+    proba_q = proba_q.unsqueeze(0) # [B, n_shot, 2, 60, 60]
+    
+    shn_entropy = - ((proba_q * torch.log(proba_q + 1e-10)).sum(2))
+    return shn_entropy  # [B=1, n_shot=1, 60, 60]

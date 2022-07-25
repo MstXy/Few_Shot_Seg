@@ -16,9 +16,9 @@ from .model import MMN, SegLoss
 from .model.pspnet import get_model
 from .optimizer import get_optimizer, get_scheduler
 from .dataset.dataset import get_val_loader, get_train_loader
-from .util import intersectionAndUnionGPU, AverageMeter, CompareMeter
+from .util import get_shannon_entropy_pixelwise, intersectionAndUnionGPU, AverageMeter, CompareMeter
 from .util import load_cfg_from_cfg_file, merge_cfg_from_list, ensure_path, set_log_path, log
-from .util import get_shannon_entropy
+from .util import get_shannon_entropy, get_shannon_entropy_pixelwise
 import argparse
 
 
@@ -170,13 +170,18 @@ def main(args: argparse.Namespace) -> None:
                 # shannon entropy fusion -------------
                 pred_fatt = model.classifier(att_fq)
                 pred_fq = model.classifier(f_q)
-                shn_fatt = get_shannon_entropy(pred_fatt)
-                shn_fq = get_shannon_entropy(pred_fq)
+                # # whole:
+                # shn_fatt = get_shannon_entropy(pred_fatt)
+                # shn_fq = get_shannon_entropy(pred_fq)
+                # pixelwise:
+                shn_fatt = get_shannon_entropy_pixelwise(pred_fatt) # [1,1,60,60]
+                shn_fq = get_shannon_entropy_pixelwise(pred_fq) # [1,1,60,60]
                 shn_fatt = shn_fatt * -1
                 shn_fq = shn_fq * -1
                 att_wt = shn_fatt / (shn_fatt + shn_fq)
                 fq = f_q * (1-att_wt) + att_fq * att_wt
-                # ------------------------------------
+
+                # --------------------------------------
                 # fq = f_q * (1-args.att_wt) + att_fq * args.att_wt
 
                 pred_q1 = model.classifier(att_fq)
@@ -223,7 +228,7 @@ def main(args: argparse.Namespace) -> None:
                 msg = 'Ep{}/{} IoUf0 {:.2f} IoUb0 {:.2f} IoUf1 {:.2f} IoUb1 {:.2f} IoUf {:.2f} IoUb {:.2f} ' \
                       'loss0 {:.2f} loss1 {:.2f} d {:.2f} lr {:.4f} att_wt {:.4f}'.format(
                     epoch, i, IoUf[0], IoUb[0], IoUf[1], IoUb[1], IoUf[2], IoUb[2],
-                    q_loss0, q_loss1, q_loss1-q_loss0, optimizer_meta.param_groups[0]['lr'], att_wt)
+                    q_loss0, q_loss1, q_loss1-q_loss0, optimizer_meta.param_groups[0]['lr'], att_wt.view(-1).mean())
                 if args.get('aux', False) != False:
                     msg += 'auxL {:.2f}'.format(q_loss)
                 log(msg)
