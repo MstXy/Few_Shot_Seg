@@ -54,20 +54,19 @@ EVALUATION:
   random_shot: False
   norm_feat: True
   batch_size_val: 200
-  manual_seed: 42
+  manual_seed: 2021
   ckpt_used: best
   test_num: 1000
   FB_param_noise: 0
   smoothing: True
   n_runs: 2
+  save_oracle: False
 
 CLASSIFIER:
   dist: dot
-  cls_type: oooo
+  cls_type: ooo
   adapt_iter: 200
 
-EXPERIMENT:
-  exp_name: pretrain_dot
 
-DISTRIBUTED:
-  gpus: [0]
+EXPERIMENT:
+  exp_name: pretrain_dot_val_debug
