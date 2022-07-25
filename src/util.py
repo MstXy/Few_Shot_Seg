@@ -426,3 +426,17 @@ def merge_cfg_from_list(cfg: CfgNode, cfg_list: List[str]):
         setattr(new_cfg, subkey, value)
 
     return new_cfg
+
+
+def get_shannon_entropy(pred_q):
+    # pred_q: [n_shot, 2, 60, 60]
+    proba_q = F.softmax(pred_q, dim=1)
+    proba_q = proba_q.unsqueeze(0) # [B, n_shot, 2, 60, 60]
+    
+    shn_entropy = - ((proba_q * torch.log(proba_q + 1e-10)).sum(2))
+    shn_entropy = shn_entropy.sum(dim=(1, 2, 3))
+    shn_entropy /= (pred_q.size(-1) * pred_q.size(-2))
+
+    shn_entropy = shn_entropy.sum(0)
+    assert not torch.isnan(shn_entropy), shn_entropy
+    return shn_entropy
