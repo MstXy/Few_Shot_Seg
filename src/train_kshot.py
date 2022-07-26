@@ -138,7 +138,10 @@ def main(args: argparse.Namespace) -> None:
                 f_s, fs_lst = model.extract_features(spt_imgs)  # f_s为ppm之后的feat, fs_lst为mid_feat
                 f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
 
-            model.inner_loop(f_s, s_label)
+            if args.shn_loss:
+                model.inner_loop(f_s, s_label, f_q, q_label)
+            else:
+                model.inner_loop(f_s, s_label)
 
             # ====== Phase 2: Train the attention to update query score  ======
             model.eval()
@@ -315,7 +318,10 @@ def validate_epoch(args, val_loader, model, Net):
             f_s, fs_lst = model.extract_features(spt_imgs)
             f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
 
-        model.inner_loop(f_s, s_label)
+        if args.shn_loss:
+            model.inner_loop(f_s, s_label, f_q, q_label)
+        else:
+            model.inner_loop(f_s, s_label)
 
         # ====== Phase 2: Update query score using attention. ======
         with torch.no_grad():
