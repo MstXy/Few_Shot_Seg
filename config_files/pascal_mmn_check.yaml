@@ -63,7 +63,7 @@ MODEL:
   inner_loss_type: wt_ce
   loss_type: wt_dc   # 'wt_dc',  'wt_ce'
   
-  shn_loss: True
+  shn_loss: False
   use_kl: False
 
   loss_shot: avg
@@ -77,7 +77,7 @@ MODEL:
   att_drop: 0.5
 
 Classifier:
-  dist: comp
+  dist: dot # dot
   cls_type: rooo
 
 EVALUATION:
@@ -94,6 +94,6 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: shn_lf
+  exp_name: logit_fuse
 DISTRIBUTED:
   gpus: [0]
