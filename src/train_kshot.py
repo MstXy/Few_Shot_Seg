@@ -16,7 +16,7 @@ from .model import MMN, SegLoss
 from .model.pspnet import get_model
 from .optimizer import get_optimizer, get_scheduler
 from .dataset.dataset import get_val_loader, get_train_loader
-from .util import get_shannon_entropy_pixelwise, intersectionAndUnionGPU, AverageMeter, CompareMeter
+from .util import intersectionAndUnionGPU, AverageMeter, CompareMeter
 from .util import load_cfg_from_cfg_file, merge_cfg_from_list, ensure_path, set_log_path, log
 from .util import get_shannon_entropy, get_shannon_entropy_pixelwise
 import argparse

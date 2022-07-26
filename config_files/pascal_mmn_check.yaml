@@ -74,7 +74,7 @@ MODEL:
   att_drop: 0.5
 
 Classifier:
-  dist: dot
+  dist: comp
   cls_type: rooo
 
 EVALUATION:
@@ -91,6 +91,6 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: dotr_wa_shn_fuse_pw
+  exp_name: shn_fuse_pw_comp
 DISTRIBUTED:
   gpus: [0]

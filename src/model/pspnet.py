@@ -154,6 +154,13 @@ class PSPNet(nn.Module):
                 WeightNorm.apply(self.classifier, 'weight', dim=0)  # [2, 512, 1, 1]
         elif args.get('dist') in ['cos', 'cosN']:
             self.classifier = CosCls(in_dim=self.bottleneck_dim, n_classes=args.num_classes_tr, cls_type=args.cls_type)
+        elif args.get('dist') == 'comp':
+            self.classifier = nn.Sequential(
+                nn.Conv2d(self.bottleneck_dim, self.bottleneck_dim, kernel_size=3, padding=1, bias=False),
+                nn.ReLU(inplace=True),
+                nn.Dropout2d(p=0.1),                 
+                nn.Conv2d(self.bottleneck_dim, args.num_classes_tr, kernel_size=1)
+            )
 
         self.gamma = nn.Parameter(torch.tensor(0.2))
 
