@@ -28,7 +28,7 @@ singularity exec --nv \
             --overlay /scratch/cz1627/overlay-25GB-500K.ext3:ro \
 			/scratch/cz1627/cuda11.4.2-cudnn8.2.4-devel-ubuntu20.04.3.sif \
             /bin/bash -c " source /ext3/env.sh;
-            python -m src.train_kshot --config config_files/${DATA}_mmn_check.yaml \
+            python -m src.train_kshot_self --config config_files/${DATA}_mmn_check.yaml \
 					 --opts train_split ${SPLIT} \
 						    layers ${LAYERS} \
 						    shot ${SHOT} \

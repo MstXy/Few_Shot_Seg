@@ -94,6 +94,6 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: shn_fuse_pw_comp
+  exp_name: shn_lf
 DISTRIBUTED:
   gpus: [0]
