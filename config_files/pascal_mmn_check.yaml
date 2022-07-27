@@ -94,6 +94,6 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: logit_fuse_pw
+  exp_name: logit_fuse_norm
 DISTRIBUTED:
   gpus: [0]

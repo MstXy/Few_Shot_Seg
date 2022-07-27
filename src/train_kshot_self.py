@@ -185,15 +185,15 @@ def main(args: argparse.Namespace) -> None:
                 # att_wt = shn_fatt / (shn_fatt + shn_fq)
                 
                 # logits as weights: -----------
-                # conf_att = pred_fatt[:,1].mean()
-                # conf_fq = pred_fq[:,1].mean()
-                # pixel-wise:
-                conf_att = pred_fatt[:,1]
-                conf_fq = pred_fq[:,1]
+                conf_att = pred_fatt[:,1].mean()
+                conf_fq = pred_fq[:,1].mean()
+                # # pixel-wise:
+                # conf_att = pred_fatt[:,1]
+                # conf_fq = pred_fq[:,1]
                 
                 att_wt = conf_att / (conf_att + conf_fq)
 
-                fq = f_q * (1-att_wt) + att_fq * att_wt
+                fq = F.normalize(f_q, p=2, dim=1) * (1-att_wt) + F.normalize(att_fq, p=2, dim=1) * att_wt
                 # --------------------------------------
                 # fq = f_q * (1-args.att_wt) + att_fq * args.att_wt
 
@@ -351,9 +351,9 @@ def validate_epoch(args, val_loader, model, Net):
             # shannon entropy fusion -------------
             pred_fatt = model.classifier(att_fq)
             pred_fq = model.classifier(f_q)
-            # # whole: ----------
-            # shn_fatt = get_shannon_entropy(pred_fatt)
-            # shn_fq = get_shannon_entropy(pred_fq)
+            # whole: ----------
+            shn_fatt = get_shannon_entropy(pred_fatt)
+            shn_fq = get_shannon_entropy(pred_fq)
             # pixelwise: -------
             # shn_fatt = get_shannon_entropy_pixelwise(pred_fatt) # [1,1,60,60]
             # shn_fq = get_shannon_entropy_pixelwise(pred_fq) # [1,1,60,60]
@@ -365,10 +365,13 @@ def validate_epoch(args, val_loader, model, Net):
             # logits as weights: -----------
             conf_att = pred_fatt[:,1].mean()
             conf_fq = pred_fq[:,1].mean()
+            # # pixel-wise:
+            # conf_att = pred_fatt[:,1]
+            # conf_fq = pred_fq[:,1]
             
             att_wt = conf_att / (conf_att + conf_fq)
 
-            fq = f_q * (1-att_wt) + att_fq * att_wt
+            fq = F.normalize(f_q, p=2, dim=1) * (1-att_wt) + F.normalize(att_fq, p=2, dim=1) * att_wt
             # --------------------------------------
             # fq = f_q * (1-args.att_wt) + att_fq * args.att_wt
 
