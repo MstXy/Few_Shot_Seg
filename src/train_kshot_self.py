@@ -185,8 +185,11 @@ def main(args: argparse.Namespace) -> None:
                 # att_wt = shn_fatt / (shn_fatt + shn_fq)
                 
                 # logits as weights: -----------
-                conf_att = pred_fatt[:,1].mean()
-                conf_fq = pred_fq[:,1].mean()
+                # conf_att = pred_fatt[:,1].mean()
+                # conf_fq = pred_fq[:,1].mean()
+                # pixel-wise:
+                conf_att = pred_fatt[:,1]
+                conf_fq = pred_fq[:,1]
                 
                 att_wt = conf_att / (conf_att + conf_fq)
 
