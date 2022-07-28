@@ -56,7 +56,10 @@ with torch.no_grad():
     f_q, fq_lst = model.extract_features(qry_img)  # [n_task, c, h, w]
 
     # fs: [1, 512, 60, 60], fs_lst: [1, 512, 60, 60],[1, 1024, 60, 60],[1, 2048, 60, 60]
-model.inner_loop(f_s, s_label,f_q, q_label)
+# model.inner_loop(f_s, s_label,f_q, q_label)
+for k in range(args.shot):
+    single_fs_lst = {key: [ve[k:k + 1] for ve in value] for key, value in fs_lst.items()}
+    single_f_s = f_s[k:k + 1]
 
 # # ====== Phase 2: Train the attention to update query score  ======
 # model.eval()

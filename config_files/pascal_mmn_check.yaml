@@ -63,6 +63,9 @@ MODEL:
   inner_loss_type: wt_ce
   loss_type: wt_dc   # 'wt_dc',  'wt_ce'
   
+  fuse: fixed # shn, logit, fixed
+  pw: True # pixel-wise fuse?
+
   shn_loss: False
   use_kl: False
 
@@ -94,6 +97,6 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: shn_fuse_pw_aux5
+  exp_name: base
 DISTRIBUTED:
   gpus: [0]

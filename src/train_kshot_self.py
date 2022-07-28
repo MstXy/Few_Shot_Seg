@@ -18,7 +18,7 @@ from .optimizer import get_optimizer, get_scheduler
 from .dataset.dataset import get_val_loader, get_train_loader
 from .util import intersectionAndUnionGPU, AverageMeter, CompareMeter
 from .util import load_cfg_from_cfg_file, merge_cfg_from_list, ensure_path, set_log_path, log
-from .util import get_shannon_entropy, get_shannon_entropy_pixelwise
+from .util import get_shannon_entropy, get_shannon_entropy_pixelwise, get_gram_matrix
 import argparse
 
 
@@ -170,32 +170,41 @@ def main(args: argparse.Namespace) -> None:
                 att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
                 att_fq = att_fq.mean(dim=0, keepdim=True)
 
-                # shannon entropy fusion -------------
-                pred_fatt = model.classifier(att_fq)
-                pred_fq = model.classifier(f_q)
-                # # whole: ----------
-                # shn_fatt = get_shannon_entropy(pred_fatt)
-                # shn_fq = get_shannon_entropy(pred_fq)
-                # pixelwise: -------
-                shn_fatt = get_shannon_entropy_pixelwise(pred_fatt) # [1,1,60,60]
-                shn_fq = get_shannon_entropy_pixelwise(pred_fq) # [1,1,60,60]
+                if args.fuse == "shn":
+                    # shannon entropy fusion -------------
+                    pred_fatt = model.classifier(att_fq)
+                    pred_fq = model.classifier(f_q)
+                    if args.pw:
+                        # pixelwise: -------
+                        shn_fatt = get_shannon_entropy_pixelwise(pred_fatt) # [1,1,60,60]
+                        shn_fq = get_shannon_entropy_pixelwise(pred_fq) # [1,1,60,60]
+                    else:
+                        # whole: ----------
+                        shn_fatt = get_shannon_entropy(pred_fatt)
+                        shn_fq = get_shannon_entropy(pred_fq)
 
-                shn_fatt = shn_fatt * -1
-                shn_fq = shn_fq * -1
-                att_wt = shn_fatt / (shn_fatt + shn_fq)
-                
-                # logits as weights: -----------
-                # conf_att = pred_fatt[:,1].mean()
-                # conf_fq = pred_fq[:,1].mean()
-                # pixel-wise:
-                # conf_att = pred_fatt[:,1]
-                # conf_fq = pred_fq[:,1]
-                
-                # att_wt = conf_att / (conf_att + conf_fq)
+                    shn_fatt = shn_fatt * -1
+                    shn_fq = shn_fq * -1
+                    att_wt = shn_fatt / (shn_fatt + shn_fq)
 
+                elif args.fuse == "logit":
+                    # logits as weights: -----------
+                    if args.pw:
+                        # pixel-wise:
+                        conf_att = pred_fatt[:,1]
+                        conf_fq = pred_fq[:,1]
+                    else:
+                        conf_att = pred_fatt[:,1].mean()
+                        conf_fq = pred_fq[:,1].mean()
+                    
+                    att_wt = conf_att / (conf_att + conf_fq)
+
+                else:
+                    # fixed weight fuse
+                    att_wt = args.att_wt
+                
                 fq = f_q * (1-att_wt) + att_fq * att_wt
-                # --------------------------------------
-                # fq = f_q * (1-args.att_wt) + att_fq * args.att_wt
+
 
                 pred_q1 = model.classifier(att_fq)
                 pred_q1 = F.interpolate(pred_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
@@ -348,32 +357,40 @@ def validate_epoch(args, val_loader, model, Net):
                 att_fq.append(att_out)  # [ 1, 512, h, w]
             att_fq = torch.cat(att_fq, dim=0)
             att_fq = att_fq.mean(dim=0, keepdim=True)
-            # shannon entropy fusion -------------
-            pred_fatt = model.classifier(att_fq)
-            pred_fq = model.classifier(f_q)
-            # whole: ----------
-            # shn_fatt = get_shannon_entropy(pred_fatt)
-            # shn_fq = get_shannon_entropy(pred_fq)
-            # pixelwise: -------
-            shn_fatt = get_shannon_entropy_pixelwise(pred_fatt) # [1,1,60,60]
-            shn_fq = get_shannon_entropy_pixelwise(pred_fq) # [1,1,60,60]
+            if args.fuse == "shn":
+                # shannon entropy fusion -------------
+                pred_fatt = model.classifier(att_fq)
+                pred_fq = model.classifier(f_q)
+                if args.pw:
+                    # pixelwise: -------
+                    shn_fatt = get_shannon_entropy_pixelwise(pred_fatt) # [1,1,60,60]
+                    shn_fq = get_shannon_entropy_pixelwise(pred_fq) # [1,1,60,60]
+                else:
+                    # whole: ----------
+                    shn_fatt = get_shannon_entropy(pred_fatt)
+                    shn_fq = get_shannon_entropy(pred_fq)
 
-            shn_fatt = shn_fatt * -1
-            shn_fq = shn_fq * -1
-            att_wt = shn_fatt / (shn_fatt + shn_fq)
-            
-            # logits as weights: -----------
-            # conf_att = pred_fatt[:,1].mean()
-            # conf_fq = pred_fq[:,1].mean()
-            # pixel-wise:
-            # conf_att = pred_fatt[:,1]
-            # conf_fq = pred_fq[:,1]
-            
-            # att_wt = conf_att / (conf_att + conf_fq)
+                shn_fatt = shn_fatt * -1
+                shn_fq = shn_fq * -1
+                att_wt = shn_fatt / (shn_fatt + shn_fq)
 
+            elif args.fuse == "logit":
+                # logits as weights: -----------
+                if args.pw:
+                    # pixel-wise:
+                    conf_att = pred_fatt[:,1]
+                    conf_fq = pred_fq[:,1]
+                else:
+                    conf_att = pred_fatt[:,1].mean()
+                    conf_fq = pred_fq[:,1].mean()
+                
+                att_wt = conf_att / (conf_att + conf_fq)
+
+            else:
+                # fixed weight fuse
+                att_wt = args.att_wt
+            
             fq = f_q * (1-att_wt) + att_fq * att_wt
-            # --------------------------------------
-            # fq = f_q * (1-args.att_wt) + att_fq * args.att_wt
 
             pd_q1 = model.classifier(att_fq)
             pred_q1 = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
