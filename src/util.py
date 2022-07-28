@@ -448,3 +448,13 @@ def get_shannon_entropy_pixelwise(pred_q):
     
     shn_entropy = - ((proba_q * torch.log(proba_q + 1e-10)).sum(2))
     return shn_entropy  # [B=1, n_shot=1, 60, 60]
+
+def get_gram_matrix(fea):
+    fea = fea[0]
+    b, c, h, w = fea.shape        
+    fea = fea.reshape(b, c, h*w)    # C*N
+    fea_T = fea.permute(0, 2, 1)    # N*C
+    fea_norm = fea.norm(2, 2, True)
+    fea_T_norm = fea_T.norm(2, 1, True)
+    gram = torch.bmm(fea, fea_T)/(torch.bmm(fea_norm, fea_T_norm) + 1e-7)    # C*C
+    return gram

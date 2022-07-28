@@ -60,6 +60,8 @@ with torch.no_grad():
 for k in range(args.shot):
     single_fs_lst = {key: [ve[k:k + 1] for ve in value] for key, value in fs_lst.items()}
     single_f_s = f_s[k:k + 1]
+    print(len(single_fs_lst[2]))
+
 
 # # ====== Phase 2: Train the attention to update query score  ======
 # model.eval()

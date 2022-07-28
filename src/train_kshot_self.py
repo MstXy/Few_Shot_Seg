@@ -149,26 +149,49 @@ def main(args: argparse.Namespace) -> None:
                 pred_q0 = model.classifier(f_q)
                 pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
+            if args.k_shot_fuse == "gram":
+                # gram matrix for query feature
+                que_gram = get_gram_matrix(fq_lst[2])
+                norm_max = torch.ones_like(que_gram).norm(dim=(1,2))
+
             use_amp=args.use_amp
             scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
             Trans.train()
             criterion = SegLoss(loss_type=args.loss_type)
             att_fq = []
-            sum_loss=0
+            weight_lst = []
+            sum_loss = 0
             with torch.cuda.amp.autocast(enabled=use_amp):
                 for k in range(args.shot):
                     single_fs_lst = {key: [ve[k:k + 1] for ve in value] for key, value in fs_lst.items()}
                     single_f_s = f_s[k:k + 1]
                     _, att_fq_single = Trans(fq_lst, single_fs_lst, f_q, single_f_s,)
                     att_fq.append(att_fq_single)       # [ 1, 512, h, w]
+                    
+                    if args.k_shot_fuse == "gram":
+                        # weights:
+                        # low level: & simple
+                        supp_gram = get_gram_matrix(single_fs_lst[2]) # level 2 feature
+                        gram_diff = que_gram - supp_gram
+                        weight = - (gram_diff.norm(dim=(1,2))/norm_max).reshape(-1,1,1,1) # norm2 # [B, 1, 1, 1]
+
+                        weight_lst.append(weight)
 
                     if args.loss_shot=='sum':
                         pred_att = model.classifier(att_fq_single)
                         pred_att = F.interpolate(pred_att, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
                         sum_loss = sum_loss + criterion(pred_att, q_label.long())
 
-                att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
-                att_fq = att_fq.mean(dim=0, keepdim=True)
+                if args.k_shot_fuse == "mean":
+                    att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
+                    att_fq = att_fq.mean(dim=0, keepdim=True)
+                else:
+                    # calculate weight:
+                    weight_lst = torch.cat(weight_lst, dim=0) # [k] 
+                    weight_lst = F.softmax(weight_lst, dim=0).view(-1,1,1,1) # [k,1,1,1] 
+                    att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
+                    att_fq = torch.sum(att_fq * weight_lst, dim=0, keepdim=True)
+                    
 
                 if args.fuse == "shn":
                     # shannon entropy fusion -------------
@@ -201,7 +224,7 @@ def main(args: argparse.Namespace) -> None:
 
                 else:
                     # fixed weight fuse
-                    att_wt = args.att_wt
+                    att_wt = torch.tensor(args.att_wt)
                 
                 fq = f_q * (1-att_wt) + att_fq * att_wt
 
@@ -250,7 +273,7 @@ def main(args: argparse.Namespace) -> None:
                 msg = 'Ep{}/{} IoUf0 {:.2f} IoUb0 {:.2f} IoUf1 {:.2f} IoUb1 {:.2f} IoUf {:.2f} IoUb {:.2f} ' \
                       'loss0 {:.2f} loss1 {:.2f} d {:.2f} lr {:.4f} att_wt {:.4f}'.format(
                     epoch, i, IoUf[0], IoUb[0], IoUf[1], IoUb[1], IoUf[2], IoUb[2],
-                    q_loss0, q_loss1, q_loss1-q_loss0, optimizer_meta.param_groups[0]['lr'], att_wt.view(-1).mean())
+                    q_loss0, q_loss1, q_loss1-q_loss0, optimizer_meta.param_groups[0]['lr'], att_wt.mean())
                 if args.get('aux', False) != False:
                     msg += 'auxL {:.2f}'.format(q_loss)
                 log(msg)
@@ -347,16 +370,40 @@ def validate_epoch(args, val_loader, model, Net):
             pred_q0 = model.classifier(f_q)
             pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
+        if args.k_shot_fuse == "gram":
+            # gram matrix for query feature
+            que_gram = get_gram_matrix(fq_lst[2])
+            norm_max = torch.ones_like(que_gram).norm(dim=(1,2))
+
         Net.eval()
         with torch.no_grad():
             att_fq = []
+            weight_lst = []
             for k in range(args.shot):
                 single_fs_lst = {key: [ve[k:k + 1] for ve in value] for key, value in fs_lst.items()}
                 single_f_s = f_s[k:k + 1]
                 _, att_out = Net(fq_lst, single_fs_lst, f_q, single_f_s, )
                 att_fq.append(att_out)  # [ 1, 512, h, w]
-            att_fq = torch.cat(att_fq, dim=0)
-            att_fq = att_fq.mean(dim=0, keepdim=True)
+
+                if args.k_shot_fuse == "gram":
+                    # weights:
+                    # low level: & simple
+                    supp_gram = get_gram_matrix(single_fs_lst[2]) # level 2 feature
+                    gram_diff = que_gram - supp_gram
+                    weight = - (gram_diff.norm(dim=(1,2))/norm_max).reshape(-1,1,1,1) # norm2 # [B, 1, 1, 1]
+
+                    weight_lst.append(weight)
+
+            if args.k_shot_fuse == "mean":
+                att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
+                att_fq = att_fq.mean(dim=0, keepdim=True)
+            else:
+                # calculate weight:
+                weight_lst = torch.cat(weight_lst, dim=0) # [k] 
+                weight_lst = F.softmax(weight_lst, dim=0).view(-1,1,1,1) # [k,1,1,1] 
+                att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
+                att_fq = torch.sum(att_fq * weight_lst, dim=0, keepdim=True)
+
             if args.fuse == "shn":
                 # shannon entropy fusion -------------
                 pred_fatt = model.classifier(att_fq)
@@ -388,7 +435,7 @@ def validate_epoch(args, val_loader, model, Net):
 
             else:
                 # fixed weight fuse
-                att_wt = args.att_wt
+                att_wt = torch.tensor(args.att_wt)
             
             fq = f_q * (1-att_wt) + att_fq * att_wt
 
