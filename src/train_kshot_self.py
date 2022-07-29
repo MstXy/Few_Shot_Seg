@@ -107,7 +107,7 @@ def main(args: argparse.Namespace) -> None:
                     nn.Conv2d(2, args.shot, kernel_size=1)).cuda()
     optimizer_meta = get_optimizer(args, [
         dict(params=Trans.parameters(), lr=args.trans_lr * args.scale_lr),
-        {'params': kshot_rw.parameters(), 'lr': args.trans_lr * args.scale_lr},
+        dict(params=kshot_rw.parameters(), lr=args.trans_lr * args.scale_lr),
     ])
     scheduler = get_scheduler(args, optimizer_meta, len(train_loader))
 
@@ -422,7 +422,7 @@ def validate_epoch(args, val_loader, model, Net, kshot_rw):
                         weight = weight.gather(1, idx2) # [bs=1, kshot, 1, 1]
                         weight_lst = []
                         for i in range(weight.size(1)):
-                            weight_lst.append(weight[0,i,0,0])
+                            weight_lst.append(weight[0,i,0,0].unsqueeze(0))
 
                 if args.k_shot_fuse == "mean":
                     att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
