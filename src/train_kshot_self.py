@@ -104,7 +104,7 @@ def main(args: argparse.Namespace) -> None:
     kshot_rw = nn.Sequential(
                     nn.Conv2d(args.shot, 2, kernel_size=1),
                     nn.ReLU(inplace=True),
-                    nn.Conv2d(2, args.shot, kernel_size=1))
+                    nn.Conv2d(2, args.shot, kernel_size=1)).cuda()
     optimizer_meta = get_optimizer(args, [
         dict(params=Trans.parameters(), lr=args.trans_lr * args.scale_lr),
         {'params': kshot_rw.parameters(), 'lr': args.trans_lr * args.scale_lr},
@@ -156,7 +156,7 @@ def main(args: argparse.Namespace) -> None:
                 pred_q0 = model.classifier(f_q)
                 pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
-            if args.k_shot_fuse == "gram":
+            if args.k_shot_fuse == "gram" or "gram_comp":
                 # gram matrix for query feature
                 que_gram = get_gram_matrix(fq_lst[2])
                 norm_max = torch.ones_like(que_gram).norm(dim=(1,2))
@@ -176,7 +176,7 @@ def main(args: argparse.Namespace) -> None:
                     _, att_fq_single = Trans(fq_lst, single_fs_lst, f_q, single_f_s,)
                     att_fq.append(att_fq_single)       # [ 1, 512, h, w]
                     
-                    if args.k_shot_fuse == "gram":
+                    if args.k_shot_fuse == "gram" or "gram_comp":
                         # weights:
                         # low level: & simple
                         supp_gram = get_gram_matrix(single_fs_lst[2]) # level 2 feature
@@ -190,20 +190,18 @@ def main(args: argparse.Namespace) -> None:
                         pred_att = F.interpolate(pred_att, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
                         sum_loss = sum_loss + criterion(pred_att, q_label.long())
 
+                if args.k_shot_fuse == "gram_comp":
+                    weight_lst = torch.cat(weight_lst, 1)  # [bs, kshot, 1, 1]
+                    if args.shot > 1:
+                        val1, idx1 = weight_lst.sort(1)
+                        val2, idx2 = idx1.sort(1)
+                        weight = kshot_rw(val1)
+                        weight = weight.gather(1, idx2) # [bs=1, kshot, 1, 1]
+                        weight_lst = weight.squeeze().tolist()
+
                 if args.k_shot_fuse == "mean":
                     att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
                     att_fq = att_fq.mean(dim=0, keepdim=True)
-                elif args.k_shot_fuse == "gram_comp":
-                    est_val_total = torch.cat(weight_lst, 1)  # [bs, shot, 1, 1]
-                    if args.shot > 1:
-                        val1, idx1 = est_val_total.sort(1)
-                        val2, idx2 = idx1.sort(1)
-                        weight = kshot_rw(val1)
-                        weight = weight.gather(1, idx2)
-                        weight_soft = torch.softmax(weight, 1) # [bs=1, shot, 1, 1]
-                        weight_lst = weight_soft.view(-1,1,1,1)
-                    else:
-                        weight_lst = torch.ones_like(est_val_total) # [1,1,1,1]
                 else:
                     # calculate weight:
                     weight_lst = torch.cat(weight_lst, dim=0) # [k] 
@@ -389,7 +387,7 @@ def validate_epoch(args, val_loader, model, Net, kshot_rw):
             pred_q0 = model.classifier(f_q)
             pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
-        if args.k_shot_fuse == "gram":
+        if args.k_shot_fuse == "gram" or "gram_comp":
             # gram matrix for query feature
             que_gram = get_gram_matrix(fq_lst[2])
             norm_max = torch.ones_like(que_gram).norm(dim=(1,2))
@@ -404,7 +402,7 @@ def validate_epoch(args, val_loader, model, Net, kshot_rw):
                 _, att_out = Net(fq_lst, single_fs_lst, f_q, single_f_s, )
                 att_fq.append(att_out)  # [ 1, 512, h, w]
 
-                if args.k_shot_fuse == "gram":
+                if args.k_shot_fuse == "gram" or "gram_comp":
                     # weights:
                     # low level: & simple
                     supp_gram = get_gram_matrix(single_fs_lst[2]) # level 2 feature
@@ -413,20 +411,18 @@ def validate_epoch(args, val_loader, model, Net, kshot_rw):
 
                     weight_lst.append(weight)
 
+                if args.k_shot_fuse == "gram_comp":
+                    weight_lst = torch.cat(weight_lst, 1)  # [bs, kshot, 1, 1]
+                    if args.shot > 1:
+                        val1, idx1 = weight_lst.sort(1)
+                        val2, idx2 = idx1.sort(1)
+                        weight = kshot_rw(val1)
+                        weight = weight.gather(1, idx2) # [bs=1, kshot, 1, 1]
+                        weight_lst = weight.squeeze().tolist()
+
                 if args.k_shot_fuse == "mean":
                     att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
                     att_fq = att_fq.mean(dim=0, keepdim=True)
-                elif args.k_shot_fuse == "gram_comp":
-                    est_val_total = torch.cat(weight_lst, 1)  # [bs, shot, 1, 1]
-                    if args.shot > 1:
-                        val1, idx1 = est_val_total.sort(1)
-                        val2, idx2 = idx1.sort(1)
-                        weight = kshot_rw(val1)
-                        weight = weight.gather(1, idx2)
-                        weight_soft = torch.softmax(weight, 1) # [bs=1, shot, 1, 1]
-                        weight_lst = weight_soft.view(-1,1,1,1)
-                    else:
-                        weight_lst = torch.ones_like(est_val_total) # [1,1,1,1]
                 else:
                     # calculate weight:
                     weight_lst = torch.cat(weight_lst, dim=0) # [k] 
