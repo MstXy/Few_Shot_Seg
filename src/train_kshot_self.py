@@ -197,7 +197,9 @@ def main(args: argparse.Namespace) -> None:
                         val2, idx2 = idx1.sort(1)
                         weight = kshot_rw(val1)
                         weight = weight.gather(1, idx2) # [bs=1, kshot, 1, 1]
-                        weight_lst = weight.squeeze().tolist()
+                        weight_lst = []
+                        for i in range(weight.size(1)):
+                            weight_lst.append(weight[0,i,0,0].unsqueeze(0))
 
                 if args.k_shot_fuse == "mean":
                     att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
@@ -418,7 +420,9 @@ def validate_epoch(args, val_loader, model, Net, kshot_rw):
                         val2, idx2 = idx1.sort(1)
                         weight = kshot_rw(val1)
                         weight = weight.gather(1, idx2) # [bs=1, kshot, 1, 1]
-                        weight_lst = weight.squeeze().tolist()
+                        weight_lst = []
+                        for i in range(weight.size(1)):
+                            weight_lst.append(weight[0,i,0,0])
 
                 if args.k_shot_fuse == "mean":
                     att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
