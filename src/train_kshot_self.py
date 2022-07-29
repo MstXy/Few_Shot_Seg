@@ -101,7 +101,14 @@ def main(args: argparse.Namespace) -> None:
 
     # ======= Transformer ======= args, inner_channel=32, sem=True, wa=False
     Trans = MMN(args, agg=args.agg, wa=args.wa, red_dim=args.red_dim).cuda()
-    optimizer_meta = get_optimizer(args, [dict(params=Trans.parameters(), lr=args.trans_lr * args.scale_lr)])
+    kshot_rw = nn.Sequential(
+                    nn.Conv2d(args.shot, 2, kernel_size=1),
+                    nn.ReLU(inplace=True),
+                    nn.Conv2d(2, args.shot, kernel_size=1))
+    optimizer_meta = get_optimizer(args, [
+        dict(params=Trans.parameters(), lr=args.trans_lr * args.scale_lr),
+        {'params': kshot_rw.parameters(), 'lr': args.trans_lr * args.scale_lr},
+    ])
     scheduler = get_scheduler(args, optimizer_meta, len(train_loader))
 
     # ====== Metrics initialization ======
@@ -157,6 +164,7 @@ def main(args: argparse.Namespace) -> None:
             use_amp=args.use_amp
             scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
             Trans.train()
+            kshot_rw.train()
             criterion = SegLoss(loss_type=args.loss_type)
             att_fq = []
             weight_lst = []
@@ -173,7 +181,7 @@ def main(args: argparse.Namespace) -> None:
                         # low level: & simple
                         supp_gram = get_gram_matrix(single_fs_lst[2]) # level 2 feature
                         gram_diff = que_gram - supp_gram
-                        weight = - (gram_diff.norm(dim=(1,2))/norm_max).reshape(-1,1,1,1) # norm2 # [B, 1, 1, 1]
+                        weight = - (gram_diff.norm(dim=(1,2))/norm_max).reshape(-1,1,1,1) # norm2 # [B=1, 1, 1, 1]
 
                         weight_lst.append(weight)
 
@@ -185,6 +193,17 @@ def main(args: argparse.Namespace) -> None:
                 if args.k_shot_fuse == "mean":
                     att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
                     att_fq = att_fq.mean(dim=0, keepdim=True)
+                elif args.k_shot_fuse == "gram_comp":
+                    est_val_total = torch.cat(weight_lst, 1)  # [bs, shot, 1, 1]
+                    if args.shot > 1:
+                        val1, idx1 = est_val_total.sort(1)
+                        val2, idx2 = idx1.sort(1)
+                        weight = kshot_rw(val1)
+                        weight = weight.gather(1, idx2)
+                        weight_soft = torch.softmax(weight, 1) # [bs=1, shot, 1, 1]
+                        weight_lst = weight_soft.view(-1,1,1,1)
+                    else:
+                        weight_lst = torch.ones_like(est_val_total) # [1,1,1,1]
                 else:
                     # calculate weight:
                     weight_lst = torch.cat(weight_lst, dim=0) # [k] 
@@ -281,7 +300,7 @@ def main(args: argparse.Namespace) -> None:
                 log('------Ep{}/{} FG IoU1 compared to IoU0 win {}/{} avg diff {:.2f}'.format(epoch, i,
                     train_iou_compare.win_cnt, train_iou_compare.cnt, train_iou_compare.diff_avg))
                 train_iou_compare.reset()
-                val_Iou, val_Iou1, val_loss = validate_epoch(args=args, val_loader=episodic_val_loader, model=model, Net=Trans)
+                val_Iou, val_Iou1, val_loss = validate_epoch(args=args, val_loader=episodic_val_loader, model=model, Net=Trans, kshot_rw=kshot_rw)
 
                 # Model selection
                 if val_Iou.item() > max_val_mIoU:
@@ -315,7 +334,7 @@ def main(args: argparse.Namespace) -> None:
             filename_transformer)
 
 
-def validate_epoch(args, val_loader, model, Net):
+def validate_epoch(args, val_loader, model, Net, kshot_rw):
     log('==> Start testing')
 
     iter_num = 0
@@ -394,15 +413,26 @@ def validate_epoch(args, val_loader, model, Net):
 
                     weight_lst.append(weight)
 
-            if args.k_shot_fuse == "mean":
-                att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
-                att_fq = att_fq.mean(dim=0, keepdim=True)
-            else:
-                # calculate weight:
-                weight_lst = torch.cat(weight_lst, dim=0) # [k] 
-                weight_lst = F.softmax(weight_lst, dim=0).view(-1,1,1,1) # [k,1,1,1] 
-                att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
-                att_fq = torch.sum(att_fq * weight_lst, dim=0, keepdim=True)
+                if args.k_shot_fuse == "mean":
+                    att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
+                    att_fq = att_fq.mean(dim=0, keepdim=True)
+                elif args.k_shot_fuse == "gram_comp":
+                    est_val_total = torch.cat(weight_lst, 1)  # [bs, shot, 1, 1]
+                    if args.shot > 1:
+                        val1, idx1 = est_val_total.sort(1)
+                        val2, idx2 = idx1.sort(1)
+                        weight = kshot_rw(val1)
+                        weight = weight.gather(1, idx2)
+                        weight_soft = torch.softmax(weight, 1) # [bs=1, shot, 1, 1]
+                        weight_lst = weight_soft.view(-1,1,1,1)
+                    else:
+                        weight_lst = torch.ones_like(est_val_total) # [1,1,1,1]
+                else:
+                    # calculate weight:
+                    weight_lst = torch.cat(weight_lst, dim=0) # [k] 
+                    weight_lst = F.softmax(weight_lst, dim=0).view(-1,1,1,1) # [k,1,1,1] 
+                    att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
+                    att_fq = torch.sum(att_fq * weight_lst, dim=0, keepdim=True)
 
             if args.fuse == "shn":
                 # shannon entropy fusion -------------
