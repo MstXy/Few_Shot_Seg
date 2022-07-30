@@ -181,7 +181,7 @@ def main(args: argparse.Namespace) -> None:
                 pred_q0 = model.classifier(f_q)
                 pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
-            if args.k_shot_fuse == "gram" or "gram_comp":
+            if args.k_shot_fuse in ["gram", "gram_comp"]:
                 # gram matrix for query feature
                 que_gram = get_gram_matrix(fq_lst[2]) # level 2 feature
                 norm_max = torch.ones_like(que_gram).norm(dim=(1,2))
@@ -206,7 +206,7 @@ def main(args: argparse.Namespace) -> None:
                     _, att_fq_single = Trans(fq_lst, single_fs_lst, f_q, single_f_s,)
                     att_fq.append(att_fq_single)       # [ 1, 512, h, w]
                     
-                    if args.k_shot_fuse == "gram" or "gram_comp":
+                    if args.k_shot_fuse in ["gram", "gram_comp"]:
                         # weights:
                         # low level:
                         supp_gram = get_gram_matrix(single_fs_lst[2]) # level 2 feature
@@ -455,13 +455,13 @@ def validate_epoch(args, val_loader, model, Net, extraLayer=None):
             pred_q0 = model.classifier(f_q)
             pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
-        if args.k_shot_fuse == "gram" or "gram_comp":
+        if args.k_shot_fuse in ["gram", "gram_comp"]:
             # gram matrix for query feature
             que_gram = get_gram_matrix(fq_lst[2]) # level 2 feature
             norm_max = torch.ones_like(que_gram).norm(dim=(1,2))
 
         Net.eval()
-        if args.k_shot_fuse == "gram_comp" or "att" or "lin":
+        if args.k_shot_fuse in ["gram_comp", "att", "lin"]:
             extraLayer.eval()
         with torch.no_grad():
             att_fq = []
@@ -472,7 +472,7 @@ def validate_epoch(args, val_loader, model, Net, extraLayer=None):
                 _, att_out = Net(fq_lst, single_fs_lst, f_q, single_f_s, )
                 att_fq.append(att_out)  # [ 1, 512, h, w]
 
-                if args.k_shot_fuse == "gram" or "gram_comp":
+                if args.k_shot_fuse in ["gram", "gram_comp"]:
                     # weights:
                     # low level: & simple
                     supp_gram = get_gram_matrix(single_fs_lst[2]) # level 4 feature
