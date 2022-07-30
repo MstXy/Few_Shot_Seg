@@ -18,7 +18,7 @@ from .optimizer import get_optimizer, get_scheduler
 from .dataset.dataset import get_val_loader, get_train_loader
 from .util import intersectionAndUnionGPU, AverageMeter, CompareMeter
 from .util import load_cfg_from_cfg_file, merge_cfg_from_list, ensure_path, set_log_path, log
-from .util import get_shannon_entropy, get_shannon_entropy_pixelwise, get_gram_matrix
+from .util import get_shannon_entropy, get_shannon_entropy_pixelwise, get_gram_matrix, Weighted_GAP, to_one_hot
 import argparse
 
 
@@ -101,15 +101,35 @@ def main(args: argparse.Namespace) -> None:
 
     # ======= Transformer ======= args, inner_channel=32, sem=True, wa=False
     Trans = MMN(args, agg=args.agg, wa=args.wa, red_dim=args.red_dim).cuda()
-    kshot_rw = nn.Sequential(
-                    nn.Conv2d(args.shot, 2, kernel_size=1),
-                    nn.ReLU(inplace=True),
-                    nn.Conv2d(2, args.shot, kernel_size=1)).cuda()
     
     if args.k_shot_fuse == "gram_comp":
+        kshot_rw = nn.Sequential(
+                nn.Conv2d(args.shot, 2, kernel_size=1),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(2, args.shot, kernel_size=1)).cuda()
         optimizer_meta = get_optimizer(args, [
             dict(params=Trans.parameters(), lr=args.trans_lr * args.scale_lr),
             dict(params=kshot_rw.parameters(), lr=args.trans_lr * args.scale_lr),
+        ])
+    elif args.k_shot_fuse == "att":
+        attentionBranch = nn.Sequential(
+                nn.Conv2d(1024, 256, (3,3), padding=2, dilation=2, bias=True),
+                nn.ReLU(),
+                nn.Dropout2d(p=0.5),
+                nn.Conv2d(256, 256, (3,3)),
+                nn.MaxPool2d((3,3)),
+                nn.Conv2d(256, 1, (3,3)),
+                nn.AdaptiveAvgPool2d((1,1))
+            ) # output shape: [B, 1, 1, 1] (B=1)
+        optimizer_meta = get_optimizer(args, [
+            dict(params=Trans.parameters(), lr=args.trans_lr * args.scale_lr),
+            dict(params=attentionBranch.parameters(), lr=args.trans_lr * args.scale_lr),
+        ])
+    elif args.k_shot_fuse == "lin":
+        proto2weight = nn.Linear(512, 1)
+        optimizer_meta = get_optimizer(args, [
+            dict(params=Trans.parameters(), lr=args.trans_lr * args.scale_lr),
+            dict(params=proto2weight.parameters(), lr=args.trans_lr * args.scale_lr),
         ])
     else:
         optimizer_meta = get_optimizer(args, [dict(params=Trans.parameters(), lr=args.trans_lr * args.scale_lr)])
@@ -163,13 +183,18 @@ def main(args: argparse.Namespace) -> None:
 
             if args.k_shot_fuse == "gram" or "gram_comp":
                 # gram matrix for query feature
-                que_gram = get_gram_matrix(fq_lst[2])
+                que_gram = get_gram_matrix(fq_lst[2]) # level 2 feature
                 norm_max = torch.ones_like(que_gram).norm(dim=(1,2))
 
             use_amp=args.use_amp
             scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
             Trans.train()
-            kshot_rw.train()
+            if args.k_shot_fuse == "gram_comp":
+                kshot_rw.train()
+            elif args.k_shot_fuse == "att":
+                attentionBranch.train()
+            elif args.k_shot_fuse == "lin":
+                proto2weight.train()
             criterion = SegLoss(loss_type=args.loss_type)
             att_fq = []
             weight_lst = []
@@ -183,12 +208,41 @@ def main(args: argparse.Namespace) -> None:
                     
                     if args.k_shot_fuse == "gram" or "gram_comp":
                         # weights:
-                        # low level: & simple
+                        # low level:
                         supp_gram = get_gram_matrix(single_fs_lst[2]) # level 2 feature
                         gram_diff = que_gram - supp_gram
                         weight = - (gram_diff.norm(dim=(1,2))/norm_max).reshape(-1,1,1,1) # norm2 # [B=1, 1, 1, 1]
-
                         weight_lst.append(weight)
+
+                    elif args.k_shot_fuse == "att":
+                        # apply attention branch
+                        comp_feature = torch.cat((f_q, f_s), dim=1)
+                        weight = attentionBranch(comp_feature).squeeze().unsqueeze(0)
+                        weight_lst.append(weight)
+                    
+                    elif args.k_shot_fuse == "lin":
+                        # apply GAP and then Linear layer
+                        single_s_label = s_label[k:k+1] # [k, img_w, img_h]
+                        single_s_label = F.interpolate(single_s_label, size=att_fq_single.size()[-2:], mode='bilinear', align_corners=True)
+                        proto = Weighted_GAP(single_f_s, single_s_label) # [b=1, c=512, 1, 1]
+                        weight = proto2weight(proto) # [b=1,1,1,1]
+                        weight = weight.squeeze().unsqueeze(0) # [1]
+                        weight_lst.append(weight)
+
+                    elif args.k_shot_fuse == "gram_pred":
+                        # get predicted pseudo label
+                        pred_fs = model.classifier(single_f_s)
+                        pred_fs = F.interpolate(pred_fs, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+                        pred_fs = F.softmax(pred_fs, dim=1)
+
+                        single_s_label = s_label[k:k+1]
+
+                        que_gram = get_gram_matrix(to_one_hot(single_s_label)) # ground truth label for fs
+                        supp_gram = get_gram_matrix(pred_fs) # pred f_s label
+                        gram_diff = que_gram - supp_gram
+                        weight = - (gram_diff.norm(dim=(1,2))/norm_max).reshape(-1,1,1,1) # norm2 # [B=1, 1, 1, 1]
+                        weight_lst.append(weight)
+                        
 
                     if args.loss_shot=='sum':
                         pred_att = model.classifier(att_fq_single)
@@ -305,7 +359,14 @@ def main(args: argparse.Namespace) -> None:
                 log('------Ep{}/{} FG IoU1 compared to IoU0 win {}/{} avg diff {:.2f}'.format(epoch, i,
                     train_iou_compare.win_cnt, train_iou_compare.cnt, train_iou_compare.diff_avg))
                 train_iou_compare.reset()
-                val_Iou, val_Iou1, val_loss = validate_epoch(args=args, val_loader=episodic_val_loader, model=model, Net=Trans, kshot_rw=kshot_rw)
+                if args.k_shot_fuse == "gram_comp":
+                    val_Iou, val_Iou1, val_loss = validate_epoch(args=args, val_loader=episodic_val_loader, model=model, Net=Trans, extraLayer=kshot_rw)
+                elif args.k_shot_fuse == "att":
+                    val_Iou, val_Iou1, val_loss = validate_epoch(args=args, val_loader=episodic_val_loader, model=model, Net=Trans, extraLayer=attentionBranch)
+                elif args.k_shot_fuse == "lin":
+                    val_Iou, val_Iou1, val_loss = validate_epoch(args=args, val_loader=episodic_val_loader, model=model, Net=Trans, extraLayer=proto2weight)
+                else:
+                    val_Iou, val_Iou1, val_loss = validate_epoch(args=args, val_loader=episodic_val_loader, model=model, Net=Trans)
 
                 # Model selection
                 if val_Iou.item() > max_val_mIoU:
@@ -339,7 +400,7 @@ def main(args: argparse.Namespace) -> None:
             filename_transformer)
 
 
-def validate_epoch(args, val_loader, model, Net, kshot_rw):
+def validate_epoch(args, val_loader, model, Net, extraLayer=None):
     log('==> Start testing')
 
     iter_num = 0
@@ -396,11 +457,12 @@ def validate_epoch(args, val_loader, model, Net, kshot_rw):
 
         if args.k_shot_fuse == "gram" or "gram_comp":
             # gram matrix for query feature
-            que_gram = get_gram_matrix(fq_lst[2])
+            que_gram = get_gram_matrix(fq_lst[2]) # level 2 feature
             norm_max = torch.ones_like(que_gram).norm(dim=(1,2))
 
         Net.eval()
-        kshot_rw.eval()
+        if args.k_shot_fuse == "gram_comp" or "att" or "lin":
+            extraLayer.eval()
         with torch.no_grad():
             att_fq = []
             weight_lst = []
@@ -413,10 +475,38 @@ def validate_epoch(args, val_loader, model, Net, kshot_rw):
                 if args.k_shot_fuse == "gram" or "gram_comp":
                     # weights:
                     # low level: & simple
-                    supp_gram = get_gram_matrix(single_fs_lst[2]) # level 2 feature
+                    supp_gram = get_gram_matrix(single_fs_lst[2]) # level 4 feature
                     gram_diff = que_gram - supp_gram
                     weight = - (gram_diff.norm(dim=(1,2))/norm_max).reshape(-1,1,1,1) # norm2 # [B, 1, 1, 1]
+                    weight_lst.append(weight)
+                
+                elif args.k_shot_fuse == "att":
+                    # apply attention branch
+                    comp_feature = torch.cat((f_q, f_s), dim=1)
+                    weight = extraLayer(comp_feature).squeeze().unsqueeze(0)
+                    weight_lst.append(weight)
+                
+                elif args.k_shot_fuse == "lin":
+                    # apply GAP and then Linear layer
+                    single_s_label = s_label[k:k+1] # [k, img_w, img_h]
+                    single_s_label = F.interpolate(single_s_label, size=att_out.size()[-2:], mode='bilinear', align_corners=True)
+                    proto = Weighted_GAP(single_f_s, single_s_label) # [b=1, c=512, 1, 1]
+                    weight = extraLayer(proto) # [b=1,1,1,1]
+                    weight = weight.squeeze().unsqueeze(0) # [1]
+                    weight_lst.append(weight)
+                
+                elif args.k_shot_fuse == "gram_pred":
+                    # get predicted pseudo label
+                    pred_fs = model.classifier(single_f_s)
+                    pred_fs = F.interpolate(pred_fs, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+                    pred_fs = F.softmax(pred_fs, dim=1)
 
+                    single_s_label = s_label[k:k+1]
+
+                    que_gram = get_gram_matrix(to_one_hot(single_s_label)) # ground truth label for fs
+                    supp_gram = get_gram_matrix(pred_fs) # pred f_s label
+                    gram_diff = que_gram - supp_gram
+                    weight = - (gram_diff.norm(dim=(1,2))/norm_max).reshape(-1,1,1,1) # norm2 # [B=1, 1, 1, 1]
                     weight_lst.append(weight)
 
             if args.k_shot_fuse == "gram_comp":
@@ -424,7 +514,7 @@ def validate_epoch(args, val_loader, model, Net, kshot_rw):
                 if args.shot > 1:
                     val1, idx1 = weight_lst.sort(1)
                     val2, idx2 = idx1.sort(1)
-                    weight = kshot_rw(val1)
+                    weight = extraLayer(val1)
                     weight = weight.gather(1, idx2) # [bs=1, kshot, 1, 1]
                     weight_lst = []
                     for weight_idx in range(weight.size(1)):
