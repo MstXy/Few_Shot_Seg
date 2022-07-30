@@ -232,7 +232,7 @@ def main(args: argparse.Namespace) -> None:
                     elif args.k_shot_fuse == "gram_pred":
                         # get predicted pseudo label
                         pred_fs = model.classifier(single_f_s)
-                        pred_fs = F.interpolate(pred_fs, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
+                        pred_fs = F.interpolate(pred_fs, size=q_label.shape[1:], mode='bilinear', align_corners=True)
                         pred_fs = F.softmax(pred_fs, dim=1)
 
                         single_s_label = s_label[k:k+1].unsqueeze(0)

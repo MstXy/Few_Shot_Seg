@@ -60,30 +60,6 @@ with torch.no_grad():
 for k in range(args.shot):
     single_fs_lst = {key: [ve[k:k + 1] for ve in value] for key, value in fs_lst.items()}
     single_f_s = f_s[k:k + 1]
-    print(len(single_fs_lst[2]))
+    print(single_f_s.shape)
 
 
-# # ====== Phase 2: Train the attention to update query score  ======
-# model.eval()
-# with torch.no_grad():
-#     # pd_q0 = model.classifier(f_q)
-#     # pred_q0 = F.interpolate(pd_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
-
-# Trans.train()
-# criterion = SegLoss(loss_type=args.loss_type)
-# # q_loss1 = 0
-# # att_fq = []
-# # for k in range(args.shot):
-# #     single_fs_lst = {key: [ve[k:k + 1] for ve in value] for key, value in fs_lst.items()}
-# #     single_f_s = f_s[k:k + 1]
-# #     _, att_fq_single = Trans(fq_lst, single_fs_lst, f_q, single_f_s,)
-# #     att_fq.append(att_fq_single)       # [ 1, 512, h, w]
-
-# # att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
-# # att_fq = att_fq.mean(dim=0, keepdim=True)
-# # fq = f_q * (1-args.att_wt) + att_fq * args.att_wt
-
-# pd_q1 = model.classifier(f_q)
-# pred_q = F.interpolate(pd_q1, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
-
-# print(criterion(pred_q, q_label.long()))
