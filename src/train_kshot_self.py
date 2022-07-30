@@ -237,7 +237,7 @@ def main(args: argparse.Namespace) -> None:
 
                         single_s_label = s_label[k:k+1]
 
-                        que_gram = get_gram_matrix(to_one_hot(single_s_label)) # ground truth label for fs
+                        que_gram = get_gram_matrix(to_one_hot(single_s_label, 2)) # ground truth label for fs
                         supp_gram = get_gram_matrix(pred_fs) # pred f_s label
                         gram_diff = que_gram - supp_gram
                         weight = - (gram_diff.norm(dim=(1,2))/norm_max).reshape(-1,1,1,1) # norm2 # [B=1, 1, 1, 1]
@@ -503,7 +503,7 @@ def validate_epoch(args, val_loader, model, Net, extraLayer=None):
 
                     single_s_label = s_label[k:k+1]
 
-                    que_gram = get_gram_matrix(to_one_hot(single_s_label)) # ground truth label for fs
+                    que_gram = get_gram_matrix(to_one_hot(single_s_label, 2)) # ground truth label for fs
                     supp_gram = get_gram_matrix(pred_fs) # pred f_s label
                     gram_diff = que_gram - supp_gram
                     weight = - (gram_diff.norm(dim=(1,2))/norm_max).reshape(-1,1,1,1) # norm2 # [B=1, 1, 1, 1]
