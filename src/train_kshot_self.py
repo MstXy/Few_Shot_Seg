@@ -235,7 +235,7 @@ def main(args: argparse.Namespace) -> None:
                         pred_fs = F.interpolate(pred_fs, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
                         pred_fs = F.softmax(pred_fs, dim=1)
 
-                        single_s_label = s_label[k:k+1]
+                        single_s_label = s_label[k:k+1].unsqueeze(0)
 
                         que_gram = get_gram_matrix(to_one_hot(single_s_label, 2)) # ground truth label for fs
                         supp_gram = get_gram_matrix(pred_fs) # pred f_s label
@@ -501,7 +501,7 @@ def validate_epoch(args, val_loader, model, Net, extraLayer=None):
                     pred_fs = F.interpolate(pred_fs, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
                     pred_fs = F.softmax(pred_fs, dim=1)
 
-                    single_s_label = s_label[k:k+1]
+                    single_s_label = s_label[k:k+1].unsqueeze(0)
 
                     que_gram = get_gram_matrix(to_one_hot(single_s_label, 2)) # ground truth label for fs
                     supp_gram = get_gram_matrix(pred_fs) # pred f_s label
