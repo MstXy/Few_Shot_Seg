@@ -395,6 +395,7 @@ def validate_epoch(args, val_loader, model, Net, kshot_rw):
             norm_max = torch.ones_like(que_gram).norm(dim=(1,2))
 
         Net.eval()
+        kshot_rw.eval()
         with torch.no_grad():
             att_fq = []
             weight_lst = []
@@ -413,26 +414,26 @@ def validate_epoch(args, val_loader, model, Net, kshot_rw):
 
                     weight_lst.append(weight)
 
-                if args.k_shot_fuse == "gram_comp":
-                    weight_lst = torch.cat(weight_lst, 1)  # [bs, kshot, 1, 1]
-                    if args.shot > 1:
-                        val1, idx1 = weight_lst.sort(1)
-                        val2, idx2 = idx1.sort(1)
-                        weight = kshot_rw(val1)
-                        weight = weight.gather(1, idx2) # [bs=1, kshot, 1, 1]
-                        weight_lst = []
-                        for i in range(weight.size(1)):
-                            weight_lst.append(weight[0,i,0,0].unsqueeze(0))
+            if args.k_shot_fuse == "gram_comp":
+                weight_lst = torch.cat(weight_lst, 1)  # [bs, kshot, 1, 1]
+                if args.shot > 1:
+                    val1, idx1 = weight_lst.sort(1)
+                    val2, idx2 = idx1.sort(1)
+                    weight = kshot_rw(val1)
+                    weight = weight.gather(1, idx2) # [bs=1, kshot, 1, 1]
+                    weight_lst = []
+                    for i in range(weight.size(1)):
+                        weight_lst.append(weight[0,i,0,0].unsqueeze(0))
 
-                if args.k_shot_fuse == "mean":
-                    att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
-                    att_fq = att_fq.mean(dim=0, keepdim=True)
-                else:
-                    # calculate weight:
-                    weight_lst = torch.cat(weight_lst, dim=0) # [k] 
-                    weight_lst = F.softmax(weight_lst, dim=0).view(-1,1,1,1) # [k,1,1,1] 
-                    att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
-                    att_fq = torch.sum(att_fq * weight_lst, dim=0, keepdim=True)
+            if args.k_shot_fuse == "mean":
+                att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
+                att_fq = att_fq.mean(dim=0, keepdim=True)
+            else:
+                # calculate weight:
+                weight_lst = torch.cat(weight_lst, dim=0) # [k] 
+                weight_lst = F.softmax(weight_lst, dim=0).view(-1,1,1,1) # [k,1,1,1] 
+                att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
+                att_fq = torch.sum(att_fq * weight_lst, dim=0, keepdim=True)
 
             if args.fuse == "shn":
                 # shannon entropy fusion -------------
