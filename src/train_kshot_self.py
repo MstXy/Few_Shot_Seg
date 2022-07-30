@@ -183,7 +183,7 @@ def main(args: argparse.Namespace) -> None:
 
             if args.k_shot_fuse in ["gram", "gram_comp"]:
                 # gram matrix for query feature
-                que_gram = get_gram_matrix(fq_lst[2]) # level 2 feature
+                que_gram = get_gram_matrix(fq_lst[2][0]) # level 2 feature
                 norm_max = torch.ones_like(que_gram).norm(dim=(1,2))
 
             use_amp=args.use_amp
@@ -209,7 +209,7 @@ def main(args: argparse.Namespace) -> None:
                     if args.k_shot_fuse in ["gram", "gram_comp"]:
                         # weights:
                         # low level:
-                        supp_gram = get_gram_matrix(single_fs_lst[2]) # level 2 feature
+                        supp_gram = get_gram_matrix(single_fs_lst[2][0]) # level 2 feature
                         gram_diff = que_gram - supp_gram
                         weight = - (gram_diff.norm(dim=(1,2))/norm_max).reshape(-1,1,1,1) # norm2 # [B=1, 1, 1, 1]
                         weight_lst.append(weight)
@@ -232,14 +232,15 @@ def main(args: argparse.Namespace) -> None:
                     elif args.k_shot_fuse == "gram_pred":
                         # get predicted pseudo label
                         pred_fs = model.classifier(single_f_s)
-                        pred_fs = F.interpolate(pred_fs, size=q_label.shape[1:], mode='bilinear', align_corners=True)
+                        pred_fs = F.interpolate(pred_fs, size=q_label.shape[-2:], mode='bilinear', align_corners=True)
                         pred_fs = F.softmax(pred_fs, dim=1)
 
                         single_s_label = s_label[k:k+1].unsqueeze(0)
 
-                        que_gram = get_gram_matrix(to_one_hot(single_s_label, 2)) # ground truth label for fs
+                        que_gram = get_gram_matrix(to_one_hot(single_s_label, 2).squeeze(1)) # ground truth label for fs
                         supp_gram = get_gram_matrix(pred_fs) # pred f_s label
                         gram_diff = que_gram - supp_gram
+                        norm_max = torch.ones_like(que_gram).norm(dim=(1,2))
                         weight = - (gram_diff.norm(dim=(1,2))/norm_max).reshape(-1,1,1,1) # norm2 # [B=1, 1, 1, 1]
                         weight_lst.append(weight)
                         
@@ -457,7 +458,7 @@ def validate_epoch(args, val_loader, model, Net, extraLayer=None):
 
         if args.k_shot_fuse in ["gram", "gram_comp"]:
             # gram matrix for query feature
-            que_gram = get_gram_matrix(fq_lst[2]) # level 2 feature
+            que_gram = get_gram_matrix(fq_lst[2][0]) # level 2 feature
             norm_max = torch.ones_like(que_gram).norm(dim=(1,2))
 
         Net.eval()
@@ -475,7 +476,7 @@ def validate_epoch(args, val_loader, model, Net, extraLayer=None):
                 if args.k_shot_fuse in ["gram", "gram_comp"]:
                     # weights:
                     # low level: & simple
-                    supp_gram = get_gram_matrix(single_fs_lst[2]) # level 4 feature
+                    supp_gram = get_gram_matrix(single_fs_lst[2][0]) # level 4 feature
                     gram_diff = que_gram - supp_gram
                     weight = - (gram_diff.norm(dim=(1,2))/norm_max).reshape(-1,1,1,1) # norm2 # [B, 1, 1, 1]
                     weight_lst.append(weight)
@@ -503,9 +504,10 @@ def validate_epoch(args, val_loader, model, Net, extraLayer=None):
 
                     single_s_label = s_label[k:k+1].unsqueeze(0)
 
-                    que_gram = get_gram_matrix(to_one_hot(single_s_label, 2)) # ground truth label for fs
+                    que_gram = get_gram_matrix(to_one_hot(single_s_label, 2).squeeze(1)) # ground truth label for fs
                     supp_gram = get_gram_matrix(pred_fs) # pred f_s label
                     gram_diff = que_gram - supp_gram
+                    norm_max = torch.ones_like(que_gram).norm(dim=(1,2))
                     weight = - (gram_diff.norm(dim=(1,2))/norm_max).reshape(-1,1,1,1) # norm2 # [B=1, 1, 1, 1]
                     weight_lst.append(weight)
 

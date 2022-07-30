@@ -450,7 +450,7 @@ def get_shannon_entropy_pixelwise(pred_q):
     return shn_entropy  # [B=1, n_shot=1, 60, 60]
 
 def get_gram_matrix(fea):
-    fea = fea[0]
+    # fea = fea[0]
     b, c, h, w = fea.shape        
     fea = fea.reshape(b, c, h*w)    # C*N
     fea_T = fea.permute(0, 2, 1)    # N*C
