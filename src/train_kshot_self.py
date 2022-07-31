@@ -222,7 +222,7 @@ def main(args: argparse.Namespace) -> None:
                     
                     elif args.k_shot_fuse == "lin":
                         # apply GAP and then Linear layer
-                        single_s_label = s_label[k:k+1] # [k, img_w, img_h]
+                        single_s_label = s_label[k:k+1].unsqueeze(0) # [k, img_w, img_h]
                         single_s_label = F.interpolate(single_s_label, size=att_fq_single.size()[-2:], mode='bilinear', align_corners=True)
                         proto = Weighted_GAP(single_f_s, single_s_label) # [b=1, c=512, 1, 1]
                         weight = proto2weight(proto) # [b=1,1,1,1]
@@ -491,7 +491,7 @@ def validate_epoch(args, val_loader, model, Net, extraLayer=None):
                 
                 elif args.k_shot_fuse == "lin":
                     # apply GAP and then Linear layer
-                    single_s_label = s_label[k:k+1] # [k, img_w, img_h]
+                    single_s_label = s_label[k:k+1].unsqueeze(0) # [1, 1, img_w, img_h]
                     single_s_label = F.interpolate(single_s_label, size=att_out.size()[-2:], mode='bilinear', align_corners=True)
                     proto = Weighted_GAP(single_f_s, single_s_label) # [b=1, c=512, 1, 1]
                     weight = extraLayer(proto) # [b=1,1,1,1]
