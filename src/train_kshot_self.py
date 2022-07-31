@@ -120,13 +120,13 @@ def main(args: argparse.Namespace) -> None:
                 nn.MaxPool2d((3,3)),
                 nn.Conv2d(256, 1, (3,3)),
                 nn.AdaptiveAvgPool2d((1,1))
-            ) # output shape: [B, 1, 1, 1] (B=1)
+            ).cuda() # output shape: [B, 1, 1, 1] (B=1)
         optimizer_meta = get_optimizer(args, [
             dict(params=Trans.parameters(), lr=args.trans_lr * args.scale_lr),
             dict(params=attentionBranch.parameters(), lr=args.trans_lr * args.scale_lr),
         ])
     elif args.k_shot_fuse == "lin":
-        proto2weight = nn.Linear(512, 1)
+        proto2weight = nn.Linear(512, 1).cuda()
         optimizer_meta = get_optimizer(args, [
             dict(params=Trans.parameters(), lr=args.trans_lr * args.scale_lr),
             dict(params=proto2weight.parameters(), lr=args.trans_lr * args.scale_lr),
@@ -222,10 +222,11 @@ def main(args: argparse.Namespace) -> None:
                     
                     elif args.k_shot_fuse == "lin":
                         # apply GAP and then Linear layer
-                        single_s_label = s_label[k:k+1].float().unsqueeze(0) # [k, img_w, img_h]
+                        single_s_label = s_label[k:k+1].float().unsqueeze(0) # [1, 1, img_w, img_h]
                         single_s_label = F.interpolate(single_s_label, size=att_fq_single.size()[-2:], mode='bilinear', align_corners=True)
                         proto = Weighted_GAP(single_f_s, single_s_label) # [b=1, c=512, 1, 1]
-                        weight = proto2weight(proto) # [b=1,1,1,1]
+                        proto = proto.reshape(1,-1)
+                        weight = proto2weight(proto) # [b=1,1]
                         weight = weight.squeeze().unsqueeze(0) # [1]
                         weight_lst.append(weight)
 
@@ -494,7 +495,8 @@ def validate_epoch(args, val_loader, model, Net, extraLayer=None):
                     single_s_label = s_label[k:k+1].float().unsqueeze(0) # [1, 1, img_w, img_h]
                     single_s_label = F.interpolate(single_s_label, size=att_out.size()[-2:], mode='bilinear', align_corners=True)
                     proto = Weighted_GAP(single_f_s, single_s_label) # [b=1, c=512, 1, 1]
-                    weight = extraLayer(proto) # [b=1,1,1,1]
+                    proto = proto.reshape(1,-1)
+                    weight = extraLayer(proto) # [b=1,1]
                     weight = weight.squeeze().unsqueeze(0) # [1]
                     weight_lst.append(weight)
                 
