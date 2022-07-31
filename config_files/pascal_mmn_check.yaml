@@ -63,7 +63,7 @@ MODEL:
   inner_loss_type: wt_ce
   loss_type: wt_dc   # 'wt_dc',  'wt_ce'
   
-  k_shot_fuse: lin # mean (default), gram, gram_comp, att, gram_pred, lin
+  k_shot_fuse: att # mean (default), gram, gram_comp, att, gram_pred, lin
 
   fuse: fixed # shn, logit, fixed
   pw: False # pixel-wise fuse?
@@ -99,6 +99,6 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: k_lin_val
+  exp_name: k_att_val
 DISTRIBUTED:
   gpus: [0]

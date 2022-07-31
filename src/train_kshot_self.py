@@ -216,7 +216,7 @@ def main(args: argparse.Namespace) -> None:
 
                     elif args.k_shot_fuse == "att":
                         # apply attention branch
-                        comp_feature = torch.cat((f_q, f_s), dim=1)
+                        comp_feature = torch.cat((f_q, single_f_s), dim=1)
                         weight = attentionBranch(comp_feature).squeeze().unsqueeze(0)
                         weight_lst.append(weight)
                     
@@ -486,7 +486,7 @@ def validate_epoch(args, val_loader, model, Net, extraLayer=None):
                 
                 elif args.k_shot_fuse == "att":
                     # apply attention branch
-                    comp_feature = torch.cat((f_q, f_s), dim=1)
+                    comp_feature = torch.cat((f_q, single_f_s), dim=1)
                     weight = extraLayer(comp_feature).squeeze().unsqueeze(0)
                     weight_lst.append(weight)
                 
