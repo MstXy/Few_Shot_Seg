@@ -291,6 +291,8 @@ def main(args: argparse.Namespace) -> None:
 
                 elif args.fuse == "logit":
                     # logits as weights: -----------
+                    pred_fatt = model.classifier(att_fq)
+                    pred_fq = model.classifier(f_q)
                     if args.pw:
                         # pixel-wise:
                         conf_att = pred_fatt[:,1]
@@ -551,6 +553,8 @@ def validate_epoch(args, val_loader, model, Net, extraLayer=None):
 
             elif args.fuse == "logit":
                 # logits as weights: -----------
+                pred_fatt = model.classifier(att_fq)
+                pred_fq = model.classifier(f_q)
                 if args.pw:
                     # pixel-wise:
                     conf_att = pred_fatt[:,1]

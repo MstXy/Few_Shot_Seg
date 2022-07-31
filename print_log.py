@@ -30,7 +30,8 @@ while line:
             dt['iou0'].update(mIoU0)
             dt['iou1'].update(mIoU1)
             dt['iou'].update(mIoU)
-            if mIoU>max_iou[-1]:
+            # for miou1 comparison
+            if mIoU1>max_iou[-2]:
                 max_iou = (mIoU0, mIoU1, mIoU)
 
     if args.end >= 1 and eval_cnt>=args.end:
@@ -41,4 +42,4 @@ while line:
 f.close()
 
 print(f"avg mIOU0: {dt['iou0'].avg:.4f}, mIOU1: {dt['iou1'].avg:.4f}, mIOU: {dt['iou'].avg:.4f}, runs: {dt['iou0'].count}\n")
-print('max iou ' + str(max_iou))
+print('max iou 1 ' + str(max_iou))
