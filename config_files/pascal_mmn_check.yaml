@@ -66,7 +66,7 @@ MODEL:
   k_shot_fuse: mean # mean (default), gram, gram_comp, att, gram_pred, lin
 
   fuse: shn # shn, logit, fixed
-  pw: False # pixel-wise fuse?
+  pw: True # pixel-wise fuse?
 
   shn_loss: False
   use_kl: False
@@ -99,6 +99,6 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: shn_val
+  exp_name: shn_pw_val
 DISTRIBUTED:
   gpus: [0]
