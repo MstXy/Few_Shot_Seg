@@ -17,18 +17,18 @@ class SegLoss(nn.Module):
         elif self.loss_type == 'ce':
             criterion_standard = nn.CrossEntropyLoss(ignore_index=255)
             return criterion_standard(prediction, target_seg)
-        elif self.loss_type == 'shn':
-            return shannon_entropy(prediction, target_seg, reduction='sum')
+        elif self.loss_type == 'wt_ce_nr':
+            return weighted_ce_loss(prediction, target_seg, ignore_index=255, reduction="none")
         else:
             return weighted_ce_loss(prediction, target_seg, ignore_index=255)
 
 
-def weighted_ce_loss(pred, label, ignore_index=255):
+def weighted_ce_loss(pred, label, ignore_index=255, reduction='mean'):
     count = torch.bincount(label.view(-1))
     weight = torch.tensor([1.0, count[0]/count[1]])
     if torch.cuda.is_available():
         weight = weight.cuda()
-    criterion = nn.CrossEntropyLoss(weight=weight, ignore_index=ignore_index)
+    criterion = nn.CrossEntropyLoss(weight=weight, ignore_index=ignore_index, reduction=reduction)
     return criterion(pred, label)
 
 
@@ -173,3 +173,12 @@ def att_weighted_out(sim, v, temp=20.0, ig_mask=None):
     weighted_v = weighted_v.view(B, -1, h, w)
     return weighted_v
 
+def count_fg(s_label):
+    # s_label: [n_shot, 473, 473]
+    # return: [n_shot]
+    fg_prop = torch.zeros(s_label.size(0)).cuda()
+    for shot in range(s_label.size(0)):
+        count = torch.bincount(s_label[shot].view(-1))
+        fg = count[1]/(count[1]+count[0])
+        fg_prop[shot] = fg
+    return fg_prop
