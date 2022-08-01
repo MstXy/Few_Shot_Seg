@@ -179,6 +179,9 @@ def count_fg(s_label):
     fg_prop = torch.zeros(s_label.size(0)).cuda()
     for shot in range(s_label.size(0)):
         count = torch.bincount(s_label[shot].view(-1))
-        fg = count[1]/(count[1]+count[0])
+        try:
+            fg = count[1]/(count[1]+count[0])
+        except IndexError:
+            fg = 0
         fg_prop[shot] = fg
     return fg_prop

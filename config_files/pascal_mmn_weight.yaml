@@ -99,6 +99,6 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: k_lin_val
+  exp_name: k_wei
 DISTRIBUTED:
   gpus: [0]
