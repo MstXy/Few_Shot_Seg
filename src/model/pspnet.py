@@ -356,23 +356,28 @@ class PSPNet(nn.Module):
             criterion1 = SegLoss(loss_type="wt_ce_nr")
 
         # inner loop 学习 classifier的params
+        weight = torch.ones(self.args.shot).cuda()
         for index in range(self.args.adapt_iter):
             pred_s_label = self.classifier(f_s)  # [n_shot, 2(cls), 60, 60]
             pred_s_label = F.interpolate(pred_s_label, size=s_label.size()[1:],mode='bilinear', align_corners=True)
-            if index < self.args.weight_iter:
-                s_loss = criterion(pred_s_label, s_label)  # pred_label: [n_shot, 2, 473, 473], label [n_shot, 473, 473]
+            if self.args.k_shot_wei:
+                if index < self.args.weight_iter:
+                    s_loss = criterion(pred_s_label, s_label)  # pred_label: [n_shot, 2, 473, 473], label [n_shot, 473, 473]
+                else:
+                    s_loss = criterion1(pred_s_label, s_label)
+                    # here reduction is none, so s_loss has same shape as s_label: [n_shot, 473, 473]
+                    if index == self.args.weight_iter:
+                        # only update weight once:
+                        pred_q_label = self.classifier(f_q) # [1, 2, 60, 60]
+                        pred_q_label = F.softmax(pred_q_label, dim=1)
+                        pred_q_label = torch.argmax(pred_q_label, dim=1) # [1, 60, 60]
+                        q_fg_prop = count_fg(pred_q_label) # [1]
+                        s_fg_prop = count_fg(s_label) # [n_shot]
+                        weight = - (s_fg_prop - q_fg_prop) ** 2 # [n_shot]
+                        weight = F.softmax(weight, dim=0).view(-1,1,1) # [n_shot, 1, 1]
+                    s_loss = (s_loss * weight).mean()
             else:
-                s_loss = criterion1(pred_s_label, s_label)
-                # here reduction is none, so s_loss has same shape as s_label: [n_shot, 473, 473]
-                pred_q_label = self.classifier(f_q) # [1, 2, 60, 60]
-                pred_q_label = F.softmax(pred_q_label, dim=1)
-                pred_q_label = torch.argmax(pred_q_label, dim=1) # [1, 60, 60]
-                q_fg_prop = count_fg(pred_q_label) # [1]
-                s_fg_prop = count_fg(s_label) # [n_shot]
-                weight = - (s_fg_prop - q_fg_prop) ** 2 # [n_shot]
-                weight = F.softmax(weight, dim=0).view(-1,1,1) # [n_shot, 1, 1]
-                s_loss = (s_loss * weight).mean()
-
+                s_loss = criterion(pred_s_label, s_label)  # pred_label: [n_shot, 2, 473, 473], label [n_shot, 473, 473]
             optimizer.zero_grad()
             s_loss.backward()
             optimizer.step()

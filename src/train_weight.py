@@ -260,9 +260,9 @@ def main(args: argparse.Namespace) -> None:
 
             if i%100==0 or (epoch==1 and i <= 1000 and i%20==0):
                 msg = 'Ep{}/{} IoUf0 {:.2f} IoUb0 {:.2f} IoUf1 {:.2f} IoUb1 {:.2f} IoUf {:.2f} IoUb {:.2f} ' \
-                      'loss0 {:.2f} loss1 {:.2f} d {:.2f} lr {:.4f} att_wt {:.4f}'.format(
+                      'loss0 {:.2f} loss1 {:.2f} d {:.2f} lr {:.4f}'.format(
                     epoch, i, IoUf[0], IoUb[0], IoUf[1], IoUb[1], IoUf[2], IoUb[2],
-                    q_loss0, q_loss1, q_loss1-q_loss0, optimizer_meta.param_groups[0]['lr'], att_wt.mean())
+                    q_loss0, q_loss1, q_loss1-q_loss0, optimizer_meta.param_groups[0]['lr'])
                 if args.get('aux', False) != False:
                     msg += 'auxL {:.2f}'.format(q_loss)
                 log(msg)
