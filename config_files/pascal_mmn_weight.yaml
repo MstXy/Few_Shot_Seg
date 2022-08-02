@@ -66,7 +66,7 @@ MODEL:
   k_shot_wei: False
   weight_iter: 25
 
-  k_shot_fuse: pse # mean (default), gram, gram_comp, att, gram_pred, lin, pse
+  k_shot_fuse: cls # mean (default), gram, gram_comp, att, gram_pred, lin, pse, cls
 
   fuse: fixed # shn, logit, fixed
   pw: True # pixel-wise fuse?
@@ -99,6 +99,6 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: k_pse
+  exp_name: k_cls
 DISTRIBUTED:
   gpus: [0]

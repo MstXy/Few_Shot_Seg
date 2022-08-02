@@ -150,6 +150,10 @@ def main(args: argparse.Namespace) -> None:
                 pred_q0 = model.classifier(f_q)
                 pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
+            if args.k_shot_fuse == "cls":
+                cls_weight = model.classifier.weight.data # [2, 512, 1, 1]
+                cls_weight = cls_weight.view(2, 512)
+
             use_amp=args.use_amp
             scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
             Trans.train()
@@ -163,6 +167,15 @@ def main(args: argparse.Namespace) -> None:
                     single_f_s = f_s[k:k + 1]
                     _, att_fq_single = Trans(fq_lst, single_fs_lst, f_q, single_f_s,)
                     att_fq.append(att_fq_single)       # [ 1, 512, h, w]
+
+                    if args.k_shot_fuse == "cls":
+                        # apply GAP and then Linear layer
+                        single_s_label = s_label[k:k+1].float().unsqueeze(0) # [1, 1, img_w, img_h]
+                        single_s_label = F.interpolate(single_s_label, size=att_fq_single.size()[-2:], mode='bilinear', align_corners=True)
+                        proto = Weighted_GAP(single_f_s, single_s_label) # [b=1, c=512, 1, 1]
+                        proto = proto.view(1, 512)
+                        weight = F.cosine_similarity(proto, cls_weight[1])
+                        weight_lst.append(weight)
 
                     if args.loss_shot=='sum':
                         pred_att = model.classifier(att_fq_single)
@@ -369,6 +382,10 @@ def validate_epoch(args, val_loader, model, Net, extraLayer=None):
             pred_q0 = model.classifier(f_q)
             pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
+        if args.k_shot_fuse == "cls":
+            cls_weight = model.classifier.weight.data # [2, 512, 1, 1]
+            cls_weight = cls_weight.view(2, 512)
+
         Net.eval()
         with torch.no_grad():
             att_fq = []
@@ -378,6 +395,15 @@ def validate_epoch(args, val_loader, model, Net, extraLayer=None):
                 single_f_s = f_s[k:k + 1]
                 _, att_out = Net(fq_lst, single_fs_lst, f_q, single_f_s, )
                 att_fq.append(att_out)  # [ 1, 512, h, w]
+
+                if args.k_shot_fuse == "cls":
+                    # apply GAP and then Linear layer
+                    single_s_label = s_label[k:k+1].float().unsqueeze(0) # [1, 1, img_w, img_h]
+                    single_s_label = F.interpolate(single_s_label, size=att_out.size()[-2:], mode='bilinear', align_corners=True)
+                    proto = Weighted_GAP(single_f_s, single_s_label) # [b=1, c=512, 1, 1]
+                    proto = proto.view(1, 512)
+                    weight = F.cosine_similarity(proto, cls_weight[1])
+                    weight_lst.append(weight)
 
             if args.k_shot_fuse == "mean":
                 att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
