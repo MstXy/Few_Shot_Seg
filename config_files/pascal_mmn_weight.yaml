@@ -63,10 +63,10 @@ MODEL:
   inner_loss_type: wt_ce
   loss_type: wt_dc   # 'wt_dc',  'wt_ce'
   
-  k_shot_wei: True
+  k_shot_wei: False
   weight_iter: 25
 
-  k_shot_fuse: mean # mean (default), gram, gram_comp, att, gram_pred, lin
+  k_shot_fuse: pse # mean (default), gram, gram_comp, att, gram_pred, lin, pse
 
   fuse: fixed # shn, logit, fixed
   pw: True # pixel-wise fuse?
@@ -99,6 +99,6 @@ EVALUATION:
   n_runs: 1
 
 EXPERIMENT:
-  exp_name: k_wei_1
+  exp_name: k_pse
 DISTRIBUTED:
   gpus: [0]

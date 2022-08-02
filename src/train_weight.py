@@ -19,6 +19,7 @@ from .dataset.dataset import get_val_loader, get_train_loader
 from .util import intersectionAndUnionGPU, AverageMeter, CompareMeter
 from .util import load_cfg_from_cfg_file, merge_cfg_from_list, ensure_path, set_log_path, log
 from .util import get_shannon_entropy, get_shannon_entropy_pixelwise, get_gram_matrix, Weighted_GAP, to_one_hot
+from .model.model_util import count_fg
 import argparse
 
 
@@ -149,7 +150,6 @@ def main(args: argparse.Namespace) -> None:
                 pred_q0 = model.classifier(f_q)
                 pred_q0 = F.interpolate(pred_q0, size=q_label.shape[1:], mode='bilinear', align_corners=True)
 
-
             use_amp=args.use_amp
             scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
             Trans.train()
@@ -172,6 +172,15 @@ def main(args: argparse.Namespace) -> None:
                 if args.k_shot_fuse == "mean":
                     att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
                     att_fq = att_fq.mean(dim=0, keepdim=True)
+                elif args.k_shot_fuse == "pse":
+                    pred_q_label = F.softmax(pred_q0, dim=1)
+                    pred_q_label = torch.argmax(pred_q_label, dim=1) # [1, 60, 60]
+                    q_fg_prop = count_fg(pred_q_label) # [1]
+                    s_fg_prop = count_fg(s_label) # [n_shot]
+                    weight = - (s_fg_prop - q_fg_prop) ** 2 # [n_shot]
+                    weight_lst = F.softmax(weight, dim=0).view(-1,1,1,1) # [n_shot, 1, 1,1]
+                    att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
+                    att_fq = torch.sum(att_fq * weight_lst, dim=0, keepdim=True)
                 else:
                     # calculate weight:
                     weight_lst = torch.cat(weight_lst, dim=0) # [k] 
@@ -373,6 +382,15 @@ def validate_epoch(args, val_loader, model, Net, extraLayer=None):
             if args.k_shot_fuse == "mean":
                 att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
                 att_fq = att_fq.mean(dim=0, keepdim=True)
+            elif args.k_shot_fuse == "pse":
+                pred_q_label = F.softmax(pred_q0, dim=1)
+                pred_q_label = torch.argmax(pred_q_label, dim=1) # [1, 60, 60]
+                q_fg_prop = count_fg(pred_q_label) # [1]
+                s_fg_prop = count_fg(s_label) # [n_shot]
+                weight = - (s_fg_prop - q_fg_prop) ** 2 # [n_shot]
+                weight_lst = F.softmax(weight, dim=0).view(-1,1,1,1) # [n_shot, 1, 1,1]
+                att_fq = torch.cat(att_fq, dim=0)  # [k, 512, h, w]
+                att_fq = torch.sum(att_fq * weight_lst, dim=0, keepdim=True)
             else:
                 # calculate weight:
                 weight_lst = torch.cat(weight_lst, dim=0) # [k] 
