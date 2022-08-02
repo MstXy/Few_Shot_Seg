@@ -10,6 +10,7 @@
 #SBATCH --mail-user=cz1627@nyu.edu
 #SBATCH --output=seg.out
 #SBATCH --gres=gpu # How much gpu need, n is the number
+#SBATCH --partition=v100,rtx8000
 
 
 
