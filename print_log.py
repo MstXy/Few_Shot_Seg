@@ -31,7 +31,7 @@ while line:
             dt['iou1'].update(mIoU1)
             dt['iou'].update(mIoU)
             # for miou1 comparison
-            if mIoU>max_iou[-1]:
+            if mIoU1>max_iou[-2]:
                 max_iou = (mIoU0, mIoU1, mIoU)
 
     if args.end >= 1 and eval_cnt>=args.end:
