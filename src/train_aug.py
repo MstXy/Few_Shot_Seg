@@ -68,8 +68,8 @@ def main(args: argparse.Namespace) -> None:
 
             for index, key in enumerate(model_dict.keys()):
                 if 'classifier' not in key and 'gamma' not in key:
-                    if model_dict[key].shape == pre_weight[key].shape:
-                        model_dict[key] = pre_weight[key]
+                    if model_dict[key].shape == pre_weight['module.' + key].shape:
+                        model_dict[key] = pre_weight['module.' + key]
                     else:
                         log( 'Pre-trained shape and model shape dismatch for {}'.format(key) )
 

@@ -1,3 +1,5 @@
+# encoding:utf-8
+
 import random
 import math
 import numpy as np
@@ -116,7 +118,7 @@ class Resize(object):
         def find_new_hw(ori_h, ori_w, test_size):
             if ori_h >= ori_w:
                 ratio = test_size * 1.0 / ori_h
-                new_h = test_size
+                new_h = test_size                 # test_size is target_size
                 new_w = int(ori_w * ratio)
             elif ori_w > ori_h:
                 ratio = test_size * 1.0 / ori_w
@@ -124,7 +126,7 @@ class Resize(object):
                 new_w = test_size
 
             if new_h % 8 != 0:
-                new_h = (int(new_h / 8)) * 8
+                new_h = (int(new_h / 8)) * 8   # 为什么新的长宽是8的倍数
             else:
                 new_h = new_h
             if new_w % 8 != 0:
@@ -186,14 +188,15 @@ class Resize_np(object):
 
 class RandScale(object):
     # Randomly resize image & label with scale factor in [scale_min, scale_max]
-    def __init__(self, scale, aspect_ratio=None):
+    def __init__(self, scale, aspect_ratio=None, fixed_size=None, padding=None):
         assert (isinstance(scale, collections.Iterable) and len(scale) == 2)
         if isinstance(scale, collections.Iterable) and len(scale) == 2 \
                 and isinstance(scale[0], numbers.Number) and isinstance(scale[1], numbers.Number) \
                 and 0 < scale[0] < scale[1]:
-            self.scale = scale
+            self.scale = scale               # scale = (0.5, 1.5)
         else:
             raise (RuntimeError("segtransform.RandScale() scale param error.\n"))
+
         if aspect_ratio is None:
             self.aspect_ratio = aspect_ratio
         elif isinstance(aspect_ratio, collections.Iterable) \
@@ -205,8 +208,10 @@ class RandScale(object):
         else:
             raise (RuntimeError("segtransform.RandScale() aspect_ratio param error.\n"))
 
+        self.fixed_size, self.padding = fixed_size, padding
+
     def __call__(self, image, label):
-        temp_scale = self.scale[0] + (self.scale[1] - self.scale[0]) * random.random()
+        temp_scale = self.scale[0] + (self.scale[1] - self.scale[0]) * random.random()  # 从 scale[0] 到 scale[1]随机选取一个scale
         temp_aspect_ratio = 1.0
         if self.aspect_ratio is not None:
             temp_aspect_ratio = self.aspect_ratio[0] + (self.aspect_ratio[1] - self.aspect_ratio[0]) * random.random()
@@ -217,6 +222,22 @@ class RandScale(object):
                            interpolation=cv2.INTER_LINEAR)
         label = cv2.resize(label, None, fx=scale_factor_x, fy=scale_factor_y,
                            interpolation=cv2.INTER_NEAREST)
+
+        if self.fixed_size is not None and self.fixed_size>0:
+            new_h, new_w, _ = image.shape
+
+            back_crop = np.zeros((self.fixed_size, self.fixed_size, 3))
+            if self.padding:
+                back_crop[:, :, 0] = self.padding[0]
+                back_crop[:, :, 1] = self.padding[1]
+                back_crop[:, :, 2] = self.padding[2]
+            back_crop[:new_h, :new_w, :] = image
+            image = back_crop
+
+            back_crop_mask = np.ones((self.fixed_size, self.fixed_size)) * 255
+            back_crop_mask[:new_h, :new_w] = label
+            label = back_crop_mask
+
         return image, label
 
 
@@ -280,11 +301,72 @@ class Crop(object):
             h_off = int((h - self.crop_h) / 2)
             w_off = int((w - self.crop_w) / 2)
         image = image[h_off:h_off+self.crop_h, w_off:w_off+self.crop_w]
+        image = image.astype(np.int)
         if label is not None:
             label = label[h_off:h_off+self.crop_h, w_off:w_off+self.crop_w]
             return image, label
         else:
             return image
+
+
+class FitCrop(object):
+    """Crops the given ndarray image (H*W*C or H*W).
+    Args:
+        size (sequence or int): Desired output size of the crop. If size is an
+        int instead of sequence like (h, w), a square crop (size, size) is made.
+    """
+    def __init__(self, k=2, multi = False):
+        self.k = k  # whether to crop at 1/2 or 1/3,  if fg is very small portion, will cutoff bigger area
+        self.multi = multi  # whether to return multiple cropped image
+
+    def __call__(self, image, label):
+        h, w, _ = image.shape
+
+        label_binary = label.copy()
+        label_binary[label_binary == 255] = 0
+        _, labels = cv2.connectedComponents(label_binary)  # labels 为联通域 的 idx
+
+        freq = np.bincount(labels.flatten())
+        freq[0] = 0
+        obj_idx = np.argmax(freq)      # id for 最大联通域
+        pxl_cnt = freq[obj_idx]
+        h0, h1, w0, w1 = self.get_coord(labels, obj_idx, h, w)
+        image = image[h0:h1, w0:w1]
+        label = label[h0:h1, w0:w1]
+
+        if self.multi and len(freq) >= 3:
+            freq[obj_idx] = 0
+            obj_idx2 = np.argmax(freq)
+            pxl_cnt2 = freq[obj_idx2]
+
+            if pxl_cnt2 / pxl_cnt >= 0.3:
+                h0, h1, w0, w1 = self.get_coord(labels, obj_idx2, h, w)
+                image2 = image[h0:h1, w0:w1]
+                label2 = label[h0:h1, w0:w1]
+
+                return image, label, image2, label2
+
+        return image, label
+
+    def get_coord(self, labels, obj_idx, h, w):
+        mask_pos = np.where(labels == obj_idx)
+        min_h, max_h, min_w, max_w = np.min(mask_pos[0]), np.max(mask_pos[0]), np.min(mask_pos[1]), np.max(mask_pos[1])
+
+        h0, h1 = min_h // self.k, h - (h - max_h) // self.k
+        w0, w1 = min_w // self.k, w - (w - max_w) // self.k
+
+        if (h1 - h0) / (w1 - w0) <= 0.7:  # height too small
+            if h0 <= h - h1:
+                h0 = 0
+            else:
+                h1 = h
+        elif (h1 - h0) / (w1 - w0) >= 1.5:  # width too small
+            if w0 <= w - w1:
+                w0 = 0
+            else:
+                w1 = w
+        return h0, h1, w0, w1
+
 
 
 class RandRotate(object):
@@ -350,6 +432,67 @@ class RandomGaussianBlur(object):
         return image, label
 
 
+class ColorJitter(object):
+    def __init__(self, cj_type='b'):
+        self.cj_type = cj_type
+
+    def __call__(self, img, label):
+        '''
+        ### Different Color Jitter ###
+        img: image
+        cj_type: {b: brightness, s: saturation, c: constast}
+        '''
+        if self.cj_type == "b":
+            hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+            h, s, v = cv2.split(hsv)    # Hue, Saturation, and Value (Brightness)
+            value = 35 if np.mean(v) <= 125 else -35
+            if value >= 0:
+                lim = 255 - value
+                v[v > lim] = 255
+                v[v <= lim] += value
+            else:
+                lim = np.absolute(value)
+                v[v < lim] = 0
+                v[v >= lim] -= np.absolute(value)
+
+            final_hsv = cv2.merge((h, s, v))
+            img = cv2.cvtColor(final_hsv, cv2.COLOR_HSV2BGR)
+
+        elif self.cj_type == "s":
+            # value = random.randint(-50, 50)
+            value = np.random.choice(np.array([0.5, 0.75, 1.25, 1.5]))
+            hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+            h, s, v = cv2.split(hsv)
+            s *= value
+
+            final_hsv = cv2.merge((h, s, v))
+            img = cv2.cvtColor(final_hsv, cv2.COLOR_HSV2BGR)
+
+        elif self.cj_type == "c":
+            brightness = 10
+            contrast = random.randint(40, 100)
+            dummy = np.int16(img)
+            dummy = dummy * (contrast / 127 + 1) - contrast + brightness
+            img = np.clip(dummy, 0, 255)
+
+        return img, label
+
+
+class ColorAug(object):
+    def __init__(self, brightness=None, contrast=None, saturation=None, hue=None):
+        self.brightness = brightness                   # [max(0, 1 - brightness), 1 + brightness]
+        self.contrast = contrast                       # [max(0, 1 - contrast), 1 + contrast]
+        self.saturation = saturation                   # [max(0, 1 - saturation), 1 + saturation]
+        self.hue = hue                                 # [-hue, hue]
+        self.gitter = transforms.ColorJitter(self.brightness, self.contrast, self.saturation, self.hue)
+
+    def __call__(self, image, label):
+        image = Image.fromarray(np.uint8(image)).convert('RGB')
+        image = self.gitter(image)
+        image = np.array(image)
+        return image, label
+
+
 class Contrast(object):
     def __init__(self, v=0.9, max_v=0.05, bias=0):
         self.v = _float_parameter(v, max_v) + bias
@@ -398,4 +541,4 @@ class BGR2RGB(object):
     # Converts image from BGR order to RGB order, for model initialized from Pytorch
     def __call__(self, image, label):
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        return image, labe
+        return image, label
